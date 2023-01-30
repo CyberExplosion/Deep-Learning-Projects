@@ -6,32 +6,81 @@ Concrete MethodModule class for a specific learning MethodModule
 # License: TBD
 
 from code.base_class.method import method
-from code.stage_1_code.Evaluate_Accuracy import Evaluate_Accuracy
+from Evaluate_Accuracy import Evaluate_Accuracy
 import torch
 from torch import nn
 import numpy as np
+from collections import OrderedDict
 
 
 class Method_MLP(method, nn.Module):
     data = None
-    # it defines the max rounds to train the model
-    max_epoch = 500
-    # it defines the learning rate for gradient descent based optimizer for model learning
-    learning_rate = 1e-3
+    # # it defines the max rounds to train the model
+    # max_epoch = 500
+    # # it defines the learning rate for gradient descent based optimizer for model learning
+    # learning_rate = 1e-3
+    # layers = {}
+    # numFeatures = 785
+    # numLabels = 10
+    # lossFunction = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.Optimizer()
+
 
     # it defines the the MLP model architecture, e.g.,
     # how many layers, size of variables in each layer, activation function, etc.
     # the size of the input/output portal of the model architecture should be consistent with our data input and desired output
-    def __init__(self, mName, mDescription):
+    def __init__(self, mName='', mDescription='', 
+                 sLossFunction='CrossEntropy', 
+                 sOptimizer='ADAM',
+                 sInputDim=785, 
+                 sLearningRate=1e-3, 
+                 sMomentum=0.9, 
+                 sMaxEpoch=500):
+        
         method.__init__(self, mName, mDescription)
         nn.Module.__init__(self)
-        # check here for nn.Linear doc: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html
-        self.fc_layer_1 = nn.Linear(4, 4)
-        # check here for nn.ReLU doc: https://pytorch.org/docs/stable/generated/torch.nn.ReLU.html
-        self.activation_func_1 = nn.ReLU()
-        self.fc_layer_2 = nn.Linear(4, 2)
-        # check here for nn.Softmax doc: https://pytorch.org/docs/stable/generated/torch.nn.Softmax.html
-        self.activation_func_2 = nn.Softmax(dim=1)
+        
+        if sLossFunction == 'MSE':
+            self.lossFunction = nn.MSELoss()
+        else:
+            self.lossFunction = nn.CrossEntropyLoss()
+        
+        if sOptimizer == 'SGD':
+            self.optimizer = torch.optim.SGD(self.parameters(), 
+                                             lr=sLearningRate, 
+                                             momentum=sMomentum)
+        else:
+            self.optimizer = torch.optim.Adam(self.parameters(), 
+                                              lr=sLearningRate)
+
+        self.optimizer = torch.optim.Optimizer()
+        self.numFeatures = sInputDim
+        self.max_epoch = sMaxEpoch
+
+        self.inputLayer = OrderedDict([
+            ('fc_layer_1', nn.Linear(self.inputDim, 4)),
+            ('activation_func_1', nn.ReLU()),
+        ])
+
+        self.hiddenLayers = OrderedDict()   # add more layers later
+
+        self.outputLayer = OrderedDict([
+            ('fc_layer_2', nn.Linear(4, self.numFeatures))
+        ])
+        # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
+        if type(self.loss_function) == type(nn.CrossEntropyLoss):
+            self.outputLayer.update(('activation_func_2', nn.Softmax(dim=1)))
+        else:
+            self.outputLayer.update(('activation_func_2', nn.ReLU()))
+        
+        # # check here for nn.Linear doc: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html
+        # self.fc_layer_1 = nn.Linear(inputDim, 4)
+        # # check here for nn.ReLU doc: https://pytorch.org/docs/stable/generated/torch.nn.ReLU.html
+        # self.activation_func_1 = nn.ReLU()
+        # self.fc_layer_2 = nn.Linear(4, 2)
+        # # check here for nn.Softmax doc: https://pytorch.org/docs/stable/generated/torch.nn.Softmax.html
+        # self.activation_func_2 = nn.Softmax(dim=1)
+
 
     # it defines the forward propagation function for input x
     # this function will calculate the output layer by layer
@@ -51,11 +100,14 @@ class Method_MLP(method, nn.Module):
     # so we don't need to define the error backpropagation function here
 
     def train(self, X, y):
+        # Turn on train mode for all layers
         # check here for the torch.optim doc: https://pytorch.org/docs/stable/optim.html
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = self.optimizer
         # check here for the nn.CrossEntropyLoss doc: https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
-        loss_function = nn.CrossEntropyLoss()
+        loss_function = self.lossFunction
         # for training accuracy investigation purpose
+        
+
         accuracy_evaluator = Evaluate_Accuracy('training evaluator', '')
 
         # it will be an iterative gradient updating process
@@ -79,7 +131,8 @@ class Method_MLP(method, nn.Module):
             optimizer.step()
 
             if epoch%100 == 0:
-                accuracy_evaluator.data = {'true_y': y_true, 'pred_y': y_pred.max(1)[1]}
+                accuracy_evaluator.data = {'true_y': y_true, 'pred_y': y_pred.max(dim=1)[1]}    # The y_pred.max(1)[1] return the indices of max value on each row of a tensor (the y_pred is a tensor)
+                # accuracy_evaluator.data = {'true_y': y_true, 'pred_y': y_pred.max(dim=1)}
                 print('Epoch:', epoch, 'Accuracy:', accuracy_evaluator.evaluate(), 'Loss:', train_loss.item())
     
     def test(self, X):
@@ -93,7 +146,9 @@ class Method_MLP(method, nn.Module):
         print('method running...')
         print('--start training...')
         self.train(self.data['train']['X'], self.data['train']['y'])
-        print('--start testing...')
-        pred_y = self.test(self.data['test']['X'])
-        return {'pred_y': pred_y, 'true_y': self.data['test']['y']}
+        print('--start validating...')
+        pred_y = self.test(self.data['validate']['X'])
+        return {'pred_y': pred_y, 'true_y': self.data['validate']['y']}
             
+
+test = Method_MLP()

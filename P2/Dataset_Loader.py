@@ -10,8 +10,8 @@ from code.base_class.dataset import dataset
 
 class Dataset_Loader(dataset):
     data = None
-    dataset_source_folder_path = None
-    dataset_source_file_name = None
+    dataset_source_folder_path = 'P2/data/'
+    dataset_source_file_name = 'train.csv'
     
     def __init__(self, dName=None, dDescription=None):
         super().__init__(dName, dDescription)
@@ -23,8 +23,12 @@ class Dataset_Loader(dataset):
         f = open(self.dataset_source_folder_path + self.dataset_source_file_name, 'r')
         for line in f:
             line = line.strip('\n')
-            elements = [int(i) for i in line.split(' ')]
-            X.append(elements[:-1])
-            y.append(elements[-1])
+            elements = [int(i) for i in line.split(',')]
+            X.append(elements[1::]) # change the input dimension
+            y.append(elements[0])
         f.close()
         return {'X': X, 'y': y}
+    
+test = Dataset_Loader()
+dic = test.load()
+print(dic['y'][0:10])
