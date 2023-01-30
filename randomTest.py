@@ -13,3 +13,21 @@ if loss == 'CrossEntropyLoss()':
     print('lmao')
 print(type(loss))
 print(loss)
+
+from collections import OrderedDict
+
+one = OrderedDict(
+    [
+    ('1', 1),
+    ('2', 2)
+    ]
+)
+two = OrderedDict(
+    [
+    ('3', 3),
+    ('4', 4)
+    ]
+)
+
+res = one.update(two)
+print(one)
