@@ -12,8 +12,8 @@ import pickle
 class Result_Saver(result):
     data = None
     fold_count = None
-    result_destination_folder_path = None
-    result_destination_file_name = None
+    result_destination_folder_path = 'P2/result/'
+    result_destination_file_name = 'runLog'
     
     def save(self):
         print('saving results...')
