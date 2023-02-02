@@ -7,7 +7,6 @@ Concrete SettingModule class for a specific experimental SettingModule
 
 from code.base_class.setting import setting
 from sklearn.model_selection import train_test_split
-import numpy as np
 from Dataset_Loader import Dataset_Loader
 from Method_MLP import Method_MLP
 from Result_Saver import Result_Saver
@@ -39,7 +38,6 @@ class Setting_MLP(setting):
             sEvaluate=Evaluate_Accuracy(),
             sResult=Result_Saver()
         )
-
     
     def load_run_save_evaluate(self):
         # load dataset

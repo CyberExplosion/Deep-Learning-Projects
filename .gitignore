@@ -1,5 +1,7 @@
 # Don't include any training data since they are too heavy
 *.csv
+runs/*
+runs
 
 .vscode/*
 !.vscode/settings.json
