@@ -22,11 +22,14 @@ class Setting_MLP(setting):
     def __init__(self, sName=None, sDescription=None, sRandSeed=47, sKFold=5, extraSettingsPath=None):
         super().__init__(sName, sDescription)
         self.trainParam = {}
+
+        #! Probably remove soon
         if extraSettingsPath:
             with open(extraSettingsPath) as f:
                 extraConfigs = f.read()
                 js = json.loads(extraConfigs)
                 self.trainParam.update(js)
+        #####
 
         self.trainParam['randSeed'] = sRandSeed
         self.trainParam['kfold'] = sKFold
@@ -42,14 +45,11 @@ class Setting_MLP(setting):
         # load dataset
         loaded_data = self.dataset.load()   # From the dataset Loader
 
-        # X_train, X_validate, y_train, y_validate = train_test_split(loaded_data['X'], loaded_data['y'],
-        #                          
-        #                                    random_state=self.randSeed)
-        
-        # run MethodModule
+        # Prepare train parameters
         self.method.data.update(loaded_data)
         self.method.data.update(self.trainParam)
 
+        # run MethodModule
         learned_result = self.method.run()  # From the Method MLP
             
         # save raw ResultModule

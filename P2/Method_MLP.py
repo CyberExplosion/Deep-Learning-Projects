@@ -56,6 +56,8 @@ class Method_MLP(method, nn.Module):
         self.outputLayer = OrderedDict([
             ('fc_layer_5', nn.Linear(49, self.data['sOutputDim']))
         ])
+
+
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
         if self.data['sLossFunction'] != 'CrossEntropy':
             self.outputLayer['activation_func_5'] = nn.Softmax(dim=1)
@@ -104,7 +106,6 @@ class Method_MLP(method, nn.Module):
 
     def trainModel(self, X, y):
         # Turn on train mode for all layers and prepare data
-
         self.training = True
         # check here for the torch.optim doc: https://pytorch.org/docs/stable/optim.html
         optimizer = self.optimizer
@@ -118,8 +119,6 @@ class Method_MLP(method, nn.Module):
         # we don't do mini-batch, we use the whole input as one batch
         # you can try to split X and y into smaller-sized batches by yourself
         # you can do an early stop if self.max_epoch is too much...
-        kfold = KFold(
-            n_splits=self.data['kfold'], shuffle=True, random_state=self.data['randSeed'])
 
         for epoch in range(self.data['sMaxEpoch']):
             # get the output, we need to covert X into torch.tensor so pytorch algorithm can operate on it
@@ -167,12 +166,16 @@ class Method_MLP(method, nn.Module):
         # Set to test mode
         self.training = False
         # do the testing, and result the result
+        # SHOULD 
         with torch.no_grad():
             y_pred = self.forward(torch.FloatTensor(
-                np.array(X)).to(torch.device('cuda:0')))
+                np.array(X)).to(torch.device('cuda:0')))    # X should be from the TESTING SET
+            # calculate the testing loss
+            # train_loss = self.loss_function(y_pred, y_true)   #? Later stuff
+
         # convert the probability distributions to the corresponding labels
         # instances will get the labels corresponding to the largest probability
-        return y_pred.max(1)[1]
+        return y_pred.max(dim=1)[1]
 
 
     def run(self):

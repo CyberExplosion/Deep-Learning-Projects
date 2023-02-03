@@ -11,8 +11,7 @@ import pandas as pd
 
 class Dataset_Loader(dataset):
     data = None
-    dataset_source_folder_path = u'P2/data/'
-    dataset_source_file_name = u'train.csv'
+    dataset_source_folder_path = u'P2/data/train.csv'
     test_set_path = u'P2/data/test.csv'
 
     def __init__(self, dName=None, dDescription=None):
@@ -24,7 +23,7 @@ class Dataset_Loader(dataset):
         yTrain = []
         XTest = []
         yTest = []
-        dt = pd.read_csv(self.dataset_source_folder_path + self.dataset_source_file_name, header=None)
+        dt = pd.read_csv(self.dataset_source_folder_path, header=None)
         XTrain = dt.iloc[:,1::]
         yTrain = dt.iloc[:,0]
 
