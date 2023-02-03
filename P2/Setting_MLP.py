@@ -6,7 +6,6 @@ Concrete SettingModule class for a specific experimental SettingModule
 # License: TBD
 
 from code.base_class.setting import setting
-from sklearn.model_selection import train_test_split
 from Dataset_Loader import Dataset_Loader
 from Method_MLP import Method_MLP
 from Result_Saver import Result_Saver
@@ -61,7 +60,8 @@ class Setting_MLP(setting):
         self.result.save()
             
         self.evaluate.data = learned_result
-        
+        self.evaluate.printOveralPerformance()
+        self.evaluate.plotLossGraph()
         return self.evaluate.evaluate()
 
         

@@ -11,9 +11,9 @@ import pandas as pd
 
 class Dataset_Loader(dataset):
     data = None
-    dataset_source_folder_path = 'P2/data/'
-    dataset_source_file_name = 'train.csv'
-    test_set_path = 'P2/data/test.csv'
+    dataset_source_folder_path = u'P2/data/'
+    dataset_source_file_name = u'train.csv'
+    test_set_path = u'P2/data/test.csv'
 
     def __init__(self, dName=None, dDescription=None):
         super().__init__(dName, dDescription)

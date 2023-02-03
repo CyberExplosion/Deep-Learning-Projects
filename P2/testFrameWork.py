@@ -1,5 +1,6 @@
 from Setting_MLP import Setting_MLP
+import matplotlib.pyplot as plt
 
-t = Setting_MLP(extraSettingsPath='P2/hiddenLayers.json')
+t = Setting_MLP()
 print(t.method.layers)
-t.load_run_save_evaluate()
+res = t.load_run_save_evaluate()

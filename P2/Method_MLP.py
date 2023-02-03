@@ -25,7 +25,7 @@ class Method_MLP(method, nn.Module):
         'sOutputDim': 10,
         'sLearningRate': 1e-3,
         'sMomentum': 0.9,
-        'sMaxEpoch': 1000  # ! CHANGE LATER
+        'sMaxEpoch': 2  # ! CHANGE LATER
     }
     # it defines the the MLP model architecture, e.g.,
     # how many layers, size of variables in each layer, activation function, etc.
@@ -78,6 +78,7 @@ class Method_MLP(method, nn.Module):
         else:
             self.optimizer = torch.optim.Adam(self.parameters(),
                                               lr=self.data['sLearningRate'])
+        self.lossList = []  # for plotting loss
 
     # it defines the forward propagation function for input x
     # this function will calculate the output layer by layer
@@ -150,6 +151,9 @@ class Method_MLP(method, nn.Module):
                 print('Epoch:', epoch, 'Accuracy:',
                       acc, 'Loss:', loss)
 
+            #Record data for ploting
+            self.lossList.append(loss)
+
             # Record data for tensorboard
             writer.add_scalar('Training Loss', train_loss, epoch)
             writer.add_scalar('Accuracy', acc, epoch)
@@ -181,4 +185,5 @@ class Method_MLP(method, nn.Module):
         self.trainModel(self.data['train']['X'], self.data['train']['y'])
         print('--start testing...')
         pred_y = self.test(self.data['test']['X']).cpu()
-        return {'pred_y': pred_y, 'true_y': self.data['test']['y']}
+        return {'pred_y': pred_y, 'true_y': self.data['test']['y'],
+                'loss': self.lossList}

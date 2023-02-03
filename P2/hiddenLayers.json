@@ -1,5 +1,0 @@
-{
-    "sExtraHiddenLayers": [
-        "('activation_func_3', nn.ReLU())"
-    ]
-}
