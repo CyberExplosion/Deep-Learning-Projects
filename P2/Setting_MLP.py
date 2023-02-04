@@ -19,7 +19,7 @@ class Setting_MLP(setting):
 
     # also use device to convert all to GPU tensor
 
-    def __init__(self, sName=None, sDescription=None, sRandSeed=47, sKFold=5, extraSettingsPath=None):
+    def __init__(self, sName=None, sDescription=None, sRandSeed=47, sKFold=None, extraSettingsPath=None):
         super().__init__(sName, sDescription)
         self.trainParam = {}
 
@@ -31,7 +31,7 @@ class Setting_MLP(setting):
                 self.trainParam.update(js)
         #####
 
-        self.trainParam['randSeed'] = sRandSeed
+        self.trainParam['sRandSeed'] = sRandSeed
         self.trainParam['kfold'] = sKFold
 
         self.prepare(
@@ -53,15 +53,21 @@ class Setting_MLP(setting):
         learned_result = self.method.run()  # From the Method MLP
             
         # save raw ResultModule
-        self.result.data = learned_result
-        self.result.data['sRandSeed'] = self.randSeed
+        # self.result.data = learned_result
+        self.result.data = loaded_data
         self.result.fold_count = self.kfold
+        # self.result.data.update(self.method.data)
+        self.result.model_res_name = self.method.model_res_name
 
-        self.result.save()
-            
         self.evaluate.data = learned_result
         self.evaluate.printOveralPerformance()
         self.evaluate.plotLossGraph()
-        return self.evaluate.evaluate()
+
+        self.result.data['acc'] = self.evaluate.evaluate()
+        self.result.save()
+        self.result.saveModel(self.method)
+
+
+        return self.result.data['acc']
 
         

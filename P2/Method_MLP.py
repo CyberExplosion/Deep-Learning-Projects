@@ -12,20 +12,22 @@ from torch import nn
 import numpy as np
 from collections import OrderedDict
 from sklearn.model_selection import KFold
+from sklearn.metrics import accuracy_score
 
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter(comment='test_run2')
+
 
 
 class Method_MLP(method, nn.Module):
     data = {
+        # 'sInitMethod': 'kaiming',
         'sLossFunction': 'CrossEntropy',
         'sOptimizer': 'ADAM',
         'sInputDim': 784,
         'sOutputDim': 10,
-        'sLearningRate': 1e-3,
+        'sLearningRate': 1e-4,
         'sMomentum': 0.9,
-        'sMaxEpoch': 2  # ! CHANGE LATER
+        'sMaxEpoch': 1000  # ! CHANGE LATER
     }
     # it defines the the MLP model architecture, e.g.,
     # how many layers, size of variables in each layer, activation function, etc.
@@ -39,30 +41,40 @@ class Method_MLP(method, nn.Module):
         if sData:
             for k, v in sData.items():
                 self.data[k] = v
+        torch.manual_seed(self.data['sRandSeed'])   # to keep the initialization stable
+
+        self.model_res_name = 'fc_models'
+        for k, v in self.data.items():
+            if k != 'train' and k != 'test':
+                self.model_res_name += f'_{k}:{v}'
+        self.writer = SummaryWriter(
+            comment=self.model_res_name,
+            filename_suffix=self.model_res_name)
 
         self.inputLayer = OrderedDict([
             ('fc_layer_1', nn.Linear(self.data['sInputDim'], 392)),
             ('activation_func_1', nn.ReLU()),
         ])
         self.hiddenLayers = OrderedDict([
-            ('fc_layer_2', nn.Linear(392, 196)),
+            ('fc_layer_2', nn.Linear(392, 294)),
             ('activation_func_2', nn.ReLU()),
-            ('fc_layer_3', nn.Linear(196, 98)),
+            ('fc_layer_3', nn.Linear(294, 196)),
             ('activation_func_3', nn.ReLU()),
-            ('fc_layer_4', nn.Linear(98, 49)),
+            ('fc_layer_4', nn.Linear(196, 49)),
             ('activation_func_4', nn.ReLU()),
+            ('fc_layer_5', nn.Linear(49, 20)),
+            ('activation_func_5', nn.ReLU()),
         ])   # add more layers later
 
         self.outputLayer = OrderedDict([
-            ('fc_layer_5', nn.Linear(49, self.data['sOutputDim']))
+            ('fc_layer_6', nn.Linear(20, self.data['sOutputDim']))
         ])
-
 
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
         if self.data['sLossFunction'] != 'CrossEntropy':
-            self.outputLayer['activation_func_5'] = nn.Softmax(dim=1)
+            self.outputLayer['activation_func_6'] = nn.Softmax(dim=1)
         else:
-            self.outputLayer['activation_func_5'] = nn.ReLU()
+            self.outputLayer['activation_func_6'] = nn.ReLU()
 
         # Compile all layers
         self.layers = nn.ModuleDict(self.compileLayers())
@@ -82,8 +94,6 @@ class Method_MLP(method, nn.Module):
                                               lr=self.data['sLearningRate'])
         self.lossList = []  # for plotting loss
 
-    # it defines the forward propagation function for input x
-    # this function will calculate the output layer by layer
 
     def compileLayers(self) -> OrderedDict:
         res = OrderedDict()
@@ -154,13 +164,13 @@ class Method_MLP(method, nn.Module):
             self.lossList.append(loss)
 
             # Record data for tensorboard
-            writer.add_scalar('Training Loss', train_loss, epoch)
-            writer.add_scalar('Accuracy', acc, epoch)
+            self.writer.add_scalar('Training Loss', train_loss, epoch)
+            self.writer.add_scalar('Accuracy', acc, epoch)
 
             # Check learning progress
             for name, weight in self.named_parameters():
-                writer.add_histogram(name, weight, epoch)
-                writer.add_histogram(f'{name}.grad', weight.grad, epoch)
+                self.writer.add_histogram(name, weight, epoch)
+                self.writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
     def test(self, X):
         # Set to test mode
@@ -181,12 +191,14 @@ class Method_MLP(method, nn.Module):
     def run(self):
         # Visualize the architecture
         test_data = torch.FloatTensor(np.array(self.data['train']['X'])).cuda()
-        writer.add_graph(self, test_data)
+        self.writer.add_graph(self, test_data)
 
         print('method running...')
         print('--start training...')
         self.trainModel(self.data['train']['X'], self.data['train']['y'])
         print('--start testing...')
         pred_y = self.test(self.data['test']['X']).cpu()
+
+        # ALso for tensor
         return {'pred_y': pred_y, 'true_y': self.data['test']['y'],
                 'loss': self.lossList}
