@@ -2,6 +2,7 @@
 *.csv
 runs/*
 runs
+*/data/*
 
 .vscode/*
 !.vscode/settings.json
