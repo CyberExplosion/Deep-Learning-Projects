@@ -15,7 +15,7 @@ class Evaluate_Accuracy(evaluate):
 
     def plotLossGraph(self):
         plt.figure(figsize=(8,6))
-        plt.plot(self.data['loss'], label='MLP Model')
+        plt.plot(self.data['loss'], label='CNN Model')
         plt.xlabel('Epochs')
         plt.ylabel('Loss (CrossEntropy)')
         plt.legend()

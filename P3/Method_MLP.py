@@ -13,17 +13,18 @@ import numpy as np
 from collections import OrderedDict
 from sklearn.model_selection import KFold
 from sklearn.metrics import accuracy_score
+from torchvision import transforms  #* To change size of input image
 
 from torch.utils.tensorboard import SummaryWriter
-
-
 
 class Method_MLP(method, nn.Module):
     data = {
         # 'sInitMethod': 'kaiming',
         'sLossFunction': 'CrossEntropy',
         'sOptimizer': 'ADAM',
-        'sInputDim': 28 * 28,
+        'sInputDim': (28, 28),
+        'sInChannels': 1,   # Color channel (number of filter)
+        'sDropout': 0.5,
         'sOutputDim': 10,
         'sLearningRate': 1e-4,
         'sMomentum': 0.9,
@@ -41,40 +42,63 @@ class Method_MLP(method, nn.Module):
         if sData:
             for k, v in sData.items():
                 self.data[k] = v
-        torch.manual_seed(self.data['sRandSeed'])   # to keep the initialization stable
+        # to keep the initialization stable
+        torch.manual_seed(self.data['sRandSeed'])
 
-        self.model_res_name = 'fc_models'
+        self.model_res_name = 'nn_models'
         for k, v in self.data.items():
             if k != 'train' and k != 'test':
                 self.model_res_name += f'_{k}:{v}'
         self.writer = SummaryWriter(
-            comment=self.model_res_name,
-            filename_suffix=self.model_res_name)
+            comment=self.model_res_name)
 
-        self.inputLayer = OrderedDict([ # ! Come to this CONV2d later
-            ('conv_layer_1', nn.Conv2d(in_channels=1, out_channels=64, kernel_size=11, stride=4, padding=2)),
-            ('activation_func_1', nn.ReLU()),
+        # ? Follow PyTorch AlexNet model
+        transformInput = transforms.Compose([
+            transforms.Resize(224, )
         ])
-        self.hiddenLayers = OrderedDict([
-            ('fc_layer_2', nn.Linear(392, 294)),
-            ('activation_func_2', nn.ReLU()),
-            ('fc_layer_3', nn.Linear(294, 196)),
-            ('activation_func_3', nn.ReLU()),
-            ('fc_layer_4', nn.Linear(196, 49)),
-            ('activation_func_4', nn.ReLU()),
-            ('fc_layer_5', nn.Linear(49, 20)),
-            ('activation_func_5', nn.ReLU()),
-        ])   # add more layers later
 
+        self.inputLayer = OrderedDict([  # ! Come to this CONV2d later
+            ('conv_layer_1', nn.Conv2d(in_channels=self.data['sInChannels'],
+                                       out_channels=64, kernel_size=11,
+                                       stride=4, padding=2)),
+            ('activation_func_1', nn.ReLU(inplace=True)),
+            ('maxpool_layer_1', nn.MaxPool2d(kernel_size=3, stride=2))
+        ])
+        self.features = OrderedDict([
+            ('conv_layer_2', nn.Conv2d(64, 192, kernel_size=5, padding=2)),
+            ('activation_func_2', nn.ReLU(inplace=True)),
+            ('maxpool_layer_2', nn.MaxPool2d(kernel_size=3, stride=2)),
+
+            ('conv_layer_3', nn.Conv2d(192, 384, kernel_size=3, padding=1)),
+            ('activation_func_3', nn.ReLU(inplace=True)),
+
+            ('conv_layer_3', nn.Conv2d(384, 256, kernel_size=3, padding=1)),
+            ('activation_func_3', nn.ReLU(inplace=True)),
+
+            ('conv_layer_4', nn.Conv2d(256, 256, kernel_size=3, padding=1)),
+            ('activation_func_4', nn.ReLU(inplace=True)),
+            ('maxpool_layer_4', nn.MaxPool2d(kernel_size=3, stride=2)),
+
+            ('avgpool_layer_5', nn.AdaptiveAvgPool2d((6, 6)))
+        ])   # add more layers later
+        self.classifier = OrderedDict([
+            ('dropout_layer_6', nn.Dropout(p=self.data['sDropout'])),
+            ('linear_layer_6', nn.Linear(256 * 6 * 6, 4096)),
+            ('activation_func_6', nn.ReLU(inplace=True)),
+
+            ('dropout_layer_7', nn.Dropout(p=self.data['sDropout'])),
+            ('linear_layer_7', nn.Linear(4096, 4096)),
+            ('activation_func_7', nn.ReLU(inplace=True))
+        ])
         self.outputLayer = OrderedDict([
-            ('fc_layer_6', nn.Linear(20, self.data['sOutputDim']))
+            ('linear_layer_8', nn.Linear(4096, self.data['sOutputDim']))
         ])
 
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
         if self.data['sLossFunction'] != 'CrossEntropy':
-            self.outputLayer['activation_func_6'] = nn.Softmax(dim=1)
+            self.outputLayer['output'] = nn.Softmax(dim=1)
         else:
-            self.outputLayer['activation_func_6'] = nn.ReLU()
+            self.outputLayer['output'] = nn.ReLU()
 
         # Compile all layers
         self.layers = nn.ModuleDict(self.compileLayers())
@@ -94,12 +118,11 @@ class Method_MLP(method, nn.Module):
                                               lr=self.data['sLearningRate'])
         self.lossList = []  # for plotting loss
 
-
     def compileLayers(self) -> OrderedDict:
         res = OrderedDict()
         res.update(self.inputLayer)
-        if self.hiddenLayers:
-            res.update(self.hiddenLayers)
+        res.update(self.features)
+        res.update(self.classifier)
         res.update(self.outputLayer)
         return res
 
@@ -131,13 +154,30 @@ class Method_MLP(method, nn.Module):
         # you can do an early stop if self.max_epoch is too much...
 
         for epoch in range(self.data['sMaxEpoch']):
-            # get the output, we need to covert X into torch.tensor so pytorch algorithm can operate on it
-            fold_pred = self.forward(torch.FloatTensor(
-                np.array(X)).to(torch.device('cuda:0')))
+            if self.data['sDataName'] == 'MNIST':
+                inTensor = torch.FloatTensor(
+                    np.array(X)).reshape(shape=(len(X), self.data['sInChannels'], self.data['sInputDim'][0], self.data['sInputDim'][1]))
+            else:
+                #! Have to switch the color channel position in tensor for the other dataset
+                inTensor = torch.FloatTensor(np.array(X)).permute(
+                    2, 0, 1).reshape(shape=(len(X), self.data['sInChannels'], self.data['sInputDim'][0], self.data['sInputDim'][1]))
 
+            # * The input dimension of AlexNet is 224*224, thus we need to transform our input data
+            # ? https://journalofbigdata.springeropen.com/articles/10.1186/s40537-019-0263-7#Sec8
+                # ? The paper above suggest padding input image with zeroes a viable way to increase our image size
+                #? Sadly, the easy way is not yet ready for pytorch: https://github.com/pytorch/vision/issues/6236
+
+            heightPad = (224 - inTensor.shape[2]) // 2  #? https://pytorch.org/docs/stable/generated/torch.nn.functional.pad.html#torch.nn.functional.pad
+            widthPad = (224 - inTensor.shape[3]) // 2
+            padding = (heightPad, heightPad, widthPad, widthPad)
+            inTensor = nn.functional.pad(inTensor, padding, 'constant', 0)  # increase the image size by padding 0
+
+            # ! Begin forward here
+            fold_pred = self.forward(inTensor.cuda())
+        
             # convert y to torch.tensor as well
             fold_true = torch.LongTensor(
-                np.array(y)).to(torch.device('cuda:0'))
+                np.array(y)).cuda()
 
             # calculate the training loss
             train_loss = loss_function(fold_pred, fold_true)
@@ -160,7 +200,7 @@ class Method_MLP(method, nn.Module):
                 print('Epoch:', epoch, 'Accuracy:',
                       acc, 'Loss:', loss)
 
-            #Record data for ploting
+            # Record data for ploting
             self.lossList.append(loss)
 
             # Record data for tensorboard
@@ -175,11 +215,19 @@ class Method_MLP(method, nn.Module):
     def test(self, X):
         # Set to test mode
         self.training = False
-        # do the testing, and result the result
-        # SHOULD 
         with torch.no_grad():
-            y_pred = self.forward(torch.FloatTensor(
-                np.array(X)).to(torch.device('cuda:0')))    # X should be from the TESTING SET
+            # get the output, we need to covert X into torch.tensor so pytorch algorithm can operate on it
+            if self.data['sDataName'] == 'MNIST':
+                y_pred = self.forward(torch.FloatTensor(
+                    np.array(X)).reshape(shape=(len(X), self.data['sInChannels'], self.data['sInputDim'][0], self.data['sInputDim'][1])).cuda())
+            else:
+                #! Have to switch the color channel position in tensor for the other dataset
+                inTensor = torch.FloatTensor(np.array(X)).permute(
+                    2, 0, 1).reshape(shape=(len(X), self.data['sInChannels'], self.data['sInputDim'][0], self.data['sInputDim'][1])).cuda()
+                y_pred = self.forward(inTensor)
+
+            # y_pred = self.forward(torch.FloatTensor(
+            #     np.array(X)).to(torch.device('cuda:0')))    # X should be from the TESTING SET
             # calculate the testing loss
             # train_loss = self.loss_function(y_pred, y_true)   #? Later stuff
 
@@ -187,12 +235,28 @@ class Method_MLP(method, nn.Module):
         # instances will get the labels corresponding to the largest probability
         return y_pred.max(dim=1)[1]
 
-
     def run(self):
-        # Visualize the architecture
-        test_data = torch.FloatTensor(np.array(self.data['train']['X'])).cuda()
-        self.writer.add_graph(self, test_data)
+        #! Visualize the architecture
+        tempX = self.data['train']['X']
+        boardGraphInput = torch.FloatTensor(np.array(tempX))
 
+        if self.data['sDataName'] == 'MNIST':
+            boardGraphInput = boardGraphInput.reshape(shape=(len(
+                tempX), self.data['sInChannels'], self.data['sInputDim'][0], self.data['sInputDim'][1]))
+        else:
+            boardGraphInput = torch.FloatTensor(np.array(self.data['train']['X'])).permute(
+                2, 0, 1).reshape(shape=(len(tempX), self.data['sInChannels'], self.data['sInputDim'][0], self.data['sInputDim'][1]))
+
+        # Resize input image
+        heightPad = (224 - boardGraphInput.shape[2]) // 2  #? https://pytorch.org/docs/stable/generated/torch.nn.functional.pad.html#torch.nn.functional.pad
+        widthPad = (224 - boardGraphInput.shape[3]) // 2
+        padding = (heightPad, heightPad, widthPad, widthPad)
+        boardGraphInput = nn.functional.pad(boardGraphInput, padding, 'constant', 0)
+
+        self.writer.add_graph(self, boardGraphInput.cuda())
+
+
+        #! Actual run
         print('method running...')
         print('--start training...')
         self.trainModel(self.data['train']['X'], self.data['train']['y'])

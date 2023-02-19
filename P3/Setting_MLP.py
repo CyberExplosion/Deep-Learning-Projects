@@ -19,23 +19,32 @@ class Setting_MLP(setting):
 
     # also use device to convert all to GPU tensor
 
-    def __init__(self, sName=None, sDescription=None, sRandSeed=47, sKFold=None, extraSettingsPath=None):
+    def __init__(self, sName=None, sDescription=None, sRandSeed=47, sKFold=None, sDataset = "MNIST"):
         super().__init__(sName, sDescription)
         self.trainParam = {}
+        self.dataset = sDataset # or ORL or CIFAR
 
-        #! Probably remove soon
-        if extraSettingsPath:
-            with open(extraSettingsPath) as f:
-                extraConfigs = f.read()
-                js = json.loads(extraConfigs)
-                self.trainParam.update(js)
-        #####
+        if self.dataset == "MNIST":
+            self.trainParam['sDataName'] = 'MNIST'
+            self.trainParam['sInputDim'] = (28,28)
+            self.trainParam['sInChannels'] = 1
+            self.trainParam['sOutputDim'] = 10
+        elif self.dataset == "ORL":
+            self.trainParam['sDataName'] = 'ORL'
+            self.trainParam['sInputDim'] = (112,92)
+            self.trainParam['sInChannels'] = 1
+            self.trainParam['sOutputDim'] = 40
+        elif self.dataset == "CIFAR":
+            self.trainParam['sDataName'] = 'CIFAR'
+            self.trainParam['sInputDim'] = (32,32)
+            self.trainParam['sInChannels'] = 3
+            self.trainParam['sOutputDim'] = 10
 
         self.trainParam['sRandSeed'] = sRandSeed
         self.trainParam['kfold'] = sKFold
 
         self.prepare(
-            sDataset=Dataset_Loader(),
+            sDataset=Dataset_Loader(sDataset=self.dataset),
             sMethod=Method_MLP(sData=self.trainParam),
             sEvaluate=Evaluate_Accuracy(),
             sResult=Result_Saver()

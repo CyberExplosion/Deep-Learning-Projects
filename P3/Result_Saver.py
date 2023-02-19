@@ -14,7 +14,7 @@ import torch
 class Result_Saver(result):
     data = None
     fold_count = None
-    result_destination_folder_path = 'P2/result/'
+    result_destination_folder_path = 'P3/result/'
     result_destination_file_name = 'runLog'
     model_res_name = None
     def saveModel(self, model: nn.Module):
