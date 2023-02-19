@@ -18,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 
-class Method_MLP(method, nn.Module):
+class Method_CNN(method, nn.Module):
     data = {
         # 'sInitMethod': 'kaiming',
         'sLossFunction': 'CrossEntropy',
