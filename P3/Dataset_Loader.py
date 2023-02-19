@@ -12,7 +12,7 @@ from torch.utils.data import Dataset
 
 class Dataset_Loader(dataset, Dataset):
     data = None
-    dataset_source_folder_path = u'P2/data/MNIST'
+    dataset_source_folder_path = u'P3/data/MNIST'
 
     def __init__(self, dName=None, dDescription=None, sDataset="MNIST", sType='train'):
         super().__init__(dName, dDescription)
