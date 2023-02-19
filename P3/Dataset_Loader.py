@@ -12,8 +12,7 @@ import pickle
 
 class Dataset_Loader(dataset):
     data = None
-    dataset_source_folder_path = u'P2/data/MNIST'
-    # test_set_path = u'P2/data/test.csv'
+    dataset_source_folder_path = u'P3/data/MNIST'
 
     def __init__(self, dName=None, dDescription=None):
         super().__init__(dName, dDescription)
@@ -21,7 +20,7 @@ class Dataset_Loader(dataset):
     def load(self) -> dict:
         print('loading data...')
 
-        with open('./data/MNIST', 'rb') as f:
+        with open(dataset_source_folder_path, 'rb') as f:
             data = pickle.load(f)    
 
         XTrain = data
