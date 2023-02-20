@@ -26,7 +26,5 @@ class Evaluate_Accuracy(evaluate):
         print(classification_report(y_pred=self.data['pred_y'], y_true=self.data['true_y']))
 
     def evaluate(self):
-        print('evaluating performance...')
-
         return accuracy_score(self.data['true_y'], self.data['pred_y'])
         

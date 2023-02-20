@@ -3,6 +3,7 @@
 runs/*
 runs
 */data/*
+*/result/*
 
 .vscode/*
 !.vscode/settings.json
