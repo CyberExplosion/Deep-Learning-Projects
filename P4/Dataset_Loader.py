@@ -145,7 +145,6 @@ class Dataset_Loader(dataset):
             tokenType = out['token_type_ids']
             attention = out['attention_mask']
             truncated = {
-                # keep special start and end symbol
                 'input_ids': tokenized[0:1] + tokenized[-(BERT_MAX_LENGTH-1):],
                 'token_type_ids': tokenType[0:1] + tokenType[-(BERT_MAX_LENGTH-1):],
                 'attention_mask': attention[0:1] + attention[-(BERT_MAX_LENGTH-1):],
@@ -154,41 +153,63 @@ class Dataset_Loader(dataset):
             inputData['test']['y'].append(label)
 
             # Load the BERT embedding model
-            bertModel = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+            bertModel = BertModel.from_pretrained(
+                'bert-base-uncased', output_hidden_states=True)
             bertModel.eval()    # Only wants to use the bert model
 
-            # Convert inputs to pytorch tensor
-            tokens_tensorList = []
-            segments_tensorList = []
-            for i, each in enumerate(inputData['train']['X']):
-                tokenTensor = torch.tensor(each['input_ids'])
-                # BERT is trained and expect sentence pairs, so we need to number each tensor to belong to a text
-                segmentTensor = torch.tensor([i] * BERT_MAX_LENGTH)
-                output = bertModel(tokenTensor, segmentTensor)
-                hidden_states = output[2]
-                # Cut the layer to feed to RNN
-                inputTensorToModel = torch.stack(hidden_states, dim=0)[-1].squeeze()
+        # Convert inputs to pytorch tensor
+        tensorData = {
+            'train': {
+                'X': [],
+                'y': [],
+            },
+            'test': {
+                'X': [],
+                'y': []
+            }
+        }
+        for i, each in enumerate(inputData['train']['X']):
+            tokenTensor = torch.tensor(each['input_ids'])
+            # BERT is trained and expect sentence pairs, so we need to number each tensor to belong to a text
+            segmentTensor = torch.tensor([i] * BERT_MAX_LENGTH)
+            output = bertModel(tokenTensor, segmentTensor)
+            hidden_states = output[2]
+            # Cut the layer to feed to RNN
+            inputTensorToModel = torch.stack(
+                hidden_states, dim=0)[-1].squeeze()
+            # tuple of (n=input tensor, segment tensor)
+            tensorData['train']['X'].append(
+                (inputTensorToModel, segmentTensor))
+            tensorData['train']['y'].append(inputData['train']['y'][i])
 
-                segments_tensorList.append(segmentTensor)
-                tokens_tensorList.append(inputTensorToModel)
+        for i, each in enumerate(inputData['test']['X']):
+            tokenTensor = torch.tensor(each['input_ids'])
+            # BERT is trained and expect sentence pairs, so we need to number each tensor to belong to a text
+            segmentTensor = torch.tensor([i] * BERT_MAX_LENGTH)
+            output = bertModel(tokenTensor, segmentTensor)
+            hidden_states = output[2]
+            # Cut the layer to feed to RNN
+            inputTensorToModel = torch.stack(
+                hidden_states, dim=0)[-1].squeeze()
+            # tuple of (n=input tensor, segment tensor)
+            tensorData['test']['X'].append((inputTensorToModel, segmentTensor))
+            tensorData['test']['y'].append(inputData['test']['y'][i])
 
-
-            # ! IN Data loader you load 1 by 1 => batch size of 1, make it work
-
-        # Save the conversion
+        # Save the conversion into tensor
         if save:
             with open(f'P4/saved/{self.task}-dataInTensor', 'wb') as handle:
-                pickle.dump(self.inputData, handle,
+                pickle.dump(tensorData, handle,
                             protocol=pickle.HIGHEST_PROTOCOL)
 
-        return self.inputData
+        return tensorData
 
     def useSavedData(self) -> dict:
         with open(f'P4/saved/{self.task}-dataInTensor', 'rb') as handle:
-            self.inputData = pickle.load(handle)
-        return self.inputData
+            tensorData = pickle.load(handle)
+        return tensorData
+
 
 test = Dataset_Loader(task='test_data')
-res = test.load(save=True)
+res = test.load(save=False)
 print(res['train']['X'][0])
 print(len(res['train']['X']))
