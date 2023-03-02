@@ -20,12 +20,13 @@ class Method_Classification(method, nn.Module):
         'sLossFunction': 'CrossEntropy',
         'sOptimizer': 'ADAM',
         'sInputSize': 768, # BERT
+        'sBertMaxSeqLen': 512,
         'sDropout': 0.5,
         'sOutputDim': 2,    # Binary classification
         'sLearningRate': 1e-3,
         'sMomentum': 0.9,
-        'sMaxEpoch': 1,  # ! CHANGE LATER
-        'sBatchSize': 5000,  # Lower than 4000 is required
+        'sMaxEpoch': 500,  # ! CHANGE LATER
+        'sBatchSize': 5,  # Lower than 4000 is required
         'sRandSeed': 47
     }
 
@@ -47,11 +48,11 @@ class Method_Classification(method, nn.Module):
             comment=self.model_res_name)
         
         self.inputLayer = OrderedDict([
-            ('rnn_layer_1', nn.RNN(input_size=self.data['sInputSize'], hidden_size=512, batch_first=True))
+            ('rnn_layer_1', nn.RNN(input_size=self.data['sInputSize'], hidden_size=self.data['sBertMaxSeqLen'], batch_first=True))
         ])
         self.outputLayer = OrderedDict([
             ('flatten_layer_2', nn.Flatten()),
-            ('linear_layer_2', nn.Linear(512, self.data['sOutputDim'])) # ! Potentially wrong size, change the input later
+            ('linear_layer_2', nn.Linear(in_features=262144, out_features=self.data['sOutputDim'])) # ! Potentially wrong size, change the input later
         ])
 
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
@@ -89,8 +90,11 @@ class Method_Classification(method, nn.Module):
     def forward(self, x):
         '''Forward propagation'''
         out = x
-        for _, func in self.layers.items():
-            out = func(out)
+        for name, func in self.layers.items():
+            if 'rnn' in name:
+                out = func(out)[0]  # we dont use the hidden states from rnn
+            else:
+                out = func(out)
 
         return out
 
@@ -108,17 +112,20 @@ class Method_Classification(method, nn.Module):
 
 
         for epoch in range(self.data['sMaxEpoch']):
-            # TODO: use Jai stackoverflow to put in batch loop --------------
             permutation = torch.randperm(len(X))    # random order of batches
             for i in range(0, len(X), self.data['sBatchSize']):
                 indices = permutation[i:i+self.data['sBatchSize']]
                 batchX, batchY = [X[i] for i in indices], [y[i] for i in indices]   # batches
+                batchXTensor = torch.stack(batchX, dim=0)
 
                 # ! Begin forward here
-                fold_pred = self.forward(torch.FloatTensor(np.array(batchX)).cuda())
-
+                fold_pred = self.forward(batchXTensor.cuda())
+                
                 fold_true = torch.LongTensor(
                     np.array(batchY)).cuda()
+                
+                # ! MAYBE The shape was not suppose to be not equal -- check
+                print(f'The shape of label tensor: {fold_true.shape}, shape of in tensor: {fold_pred.shape}')
 
                 # calculate the training loss
                 train_loss = loss_function(fold_pred, fold_true)
@@ -162,16 +169,16 @@ class Method_Classification(method, nn.Module):
 
     def run(self):
         #! Visualize the architecture
-        tempX = self.data['train']['X'][0]
-        boardGraphInput = torch.FloatTensor(np.array(tempX))
+        # unsqueeze to have 1 as batch number dimension
+        boardGraphInput = torch.tensor(self.data['train']['X'][0]).unsqueeze(dim=0).cuda()
         print(f'Shape of input: {boardGraphInput.shape}')
 
-        self.writer.add_graph(self, boardGraphInput.cuda())
+        self.writer.add_graph(self, boardGraphInput)
 
         #! Actual run
         print('method running...')
         print('--network status--')
-        netStats = summary(self, (1,self.data['sInChannels'],min(self.data['sInputDim']),min(self.data['sInputDim'])))
+        summary(self, (1, self.data['sBertMaxSeqLen'], self.data['sInputSize']))
         print('--start training...')
         self.trainModel(self.data['train']['X'], self.data['train']['y'])
         print('--start testing...')

@@ -2,6 +2,8 @@
 *.csv
 */data/*
 */saved/*
+*/runs/*
+runs/*
 
 .vscode/*
 !.vscode/settings.json
