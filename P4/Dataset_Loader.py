@@ -158,20 +158,21 @@ class Dataset_Loader(dataset):
             bertModel.eval()    # Only wants to use the bert model
 
             # Convert inputs to pytorch tensor
-            tokens_list = []
-            for each in inputData['train']['X']:
-                tokens_list.append(each['input_ids'])
-            tokens_tensor = torch.tensor(tokens_list)
+            tokens_tensorList = []
+            segments_tensorList = []
+            for i, each in enumerate(inputData['train']['X']):
+                tokenTensor = torch.tensor(each['input_ids'])
+                # BERT is trained and expect sentence pairs, so we need to number each tensor to belong to a text
+                segmentTensor = torch.tensor([i] * BERT_MAX_LENGTH)
+                output = bertModel(tokenTensor, segmentTensor)
+                hidden_states = output[2]
+                # Cut the layer to feed to RNN
+                inputTensorToModel = torch.stack(hidden_states, dim=0)[-1].squeeze()
 
-            # BERT is trained and expect sentence pairs, so we need to number each tensor to belong to a text
-            segments_ids = [[x] * 512 for x in range(0, len(inputData['train']['X']))]
-            segments_tensor = torch.tensor(segments_ids)
+                segments_tensorList.append(segmentTensor)
+                tokens_tensorList.append(inputTensorToModel)
 
-            with torch.no_grad():
-                outputs = bertModel(tokens_tensor, segments_tensor)
-                hidden_states = outputs[2]
-            # Cut the layer to feed to RNN
-            stackedHStates = torch.stack(hidden_states, dim=0)[-1]
+
             # ! IN Data loader you load 1 by 1 => batch size of 1, make it work
 
         # Save the conversion
