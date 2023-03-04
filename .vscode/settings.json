@@ -1,3 +1,4 @@
 {
-    "jupyter.allowUnauthorizedRemoteConnection": true
+    "jupyter.allowUnauthorizedRemoteConnection": true,
+    "python.analysis.typeCheckingMode": "off"
 }

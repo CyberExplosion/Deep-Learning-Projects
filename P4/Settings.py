@@ -36,6 +36,7 @@ class Settings(setting):
 
 
         self.trainParam['kfold'] = sKFold
+        self.trainParam['task'] = sTask
 
         self.prepare(
             sDataset=Dataset_Loader(task=self.task),
@@ -47,12 +48,12 @@ class Settings(setting):
     
     def load_run_save_evaluate(self):
         # load dataset
+        print(f'value of saved: {self.useSaved}')
         if self.useSaved:
-            loaded_data = self.dataset.useSavedData()  # From the dataset Loader
-            print('Using save')
+            print('Using saved embedded tensor')
+            loaded_data = self.dataset.loadTokenizedData()  # From the dataset Loader
         else:
-            print('Got in here')
-            loaded_data = self.dataset.load()
+            loaded_data = self.dataset.tokenize(save=True)
 
 
         # ! Remember to shuffle the loaded data when train

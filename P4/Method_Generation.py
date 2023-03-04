@@ -18,19 +18,19 @@ from tqdm import trange
 
 
 BERTMAX_LEN = 512
-class Method_Classification(method, nn.Module):
+class Method_Generation(method, nn.Module):
     data = {
         'sLossFunction': 'CrossEntropy',
         'sOptimizer': 'ADAM',
         'sInputSize': 768, # BERT
-        'sHiddenSize': 512,
+        'sHiddenSize': 2,
         'sGradClipAmt': 0.5,
         'sDropout': 0.5,
-        'sOutputDim': 2,    # Binary classification
+        'sOutputDim': 1622,    # Binary classification
         'sLearningRate': 1e-4,
         'sMomentum': 0.9,
-        'sMaxEpoch': 5,  # ! CHANGE LATER
-        'sBatchSize': 100,  # Lower than 4000 is required
+        'sMaxEpoch': 100,  # ! CHANGE LATER
+        'sBatchSize': 1,  # Lower than 1000 is required
         'sRandSeed': 47
     }
 
@@ -48,16 +48,26 @@ class Method_Classification(method, nn.Module):
         for k, v in self.data.items():
             if k != 'train' and k != 'test':
                 self.model_res_name += f'_{k}:{v}'
-
         self.writer = SummaryWriter(
             comment=self.model_res_name)
         
         self.inputLayer = OrderedDict([
-            ('rnn_layer_1', nn.RNN(input_size=self.data['sInputSize'], hidden_size=self.data['sHiddenSize'], batch_first=True))
+            ('linear_layer_i2h', nn.Linear(self.data['sOutputDim'] 
+                                         + self.data['sInputSize']
+                                         + self.data['sHiddenSize'], 
+                                         self.data['sInputSize']))
+        ])
+        self.hiddenLayer = OrderedDict([
+            ('linear_layer_i2o', nn.Linear(self.data['sOutputDim'] 
+                                         + self.data['sInputSize']
+                                         + self.data['sHiddenSize'], 
+                                         self.data['sInputSize'])),
+            ('linear_layer_o2o', nn.Linear(self.data['sInputSize'] 
+                                        + self.data['sOutputDim'],
+                                         self.data['sInputSize']))
         ])
         self.outputLayer = OrderedDict([
-            ('flatten_layer_2', nn.Flatten()),
-            ('linear_layer_2', nn.Linear(in_features=262144, out_features=self.data['sOutputDim'])) # ! Potentially wrong size, change the input later
+            ('dropout_layer', nn.Dropout(0.1)),
         ])
 
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
@@ -160,7 +170,7 @@ class Method_Classification(method, nn.Module):
 
         for epoch in trange(self.data['sMaxEpoch'], desc='Training epochs'):
             permutation = torch.randperm(len(X))    # random order of batches
-            for i in trange(0, len(X), self.data['sBatchSize'], desc=f'Batch progression at epoch {epoch}'):
+            for i in trange(0, len(X), self.data['sBatchSize'], desc=f'Progress batches at epoch {epoch}'):
                 indices = permutation[i:i+self.data['sBatchSize']]
                 batchX, batchY = [X[i] for i in indices], [y[i] for i in indices]   # batches
 
@@ -182,18 +192,19 @@ class Method_Classification(method, nn.Module):
 
                 # TODO: Potential modification
                 # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-                torch.nn.utils.clip_grad_norm_(self.parameters(), self.data['sGradClipAmt'])
+                # torch.nn.utils.clip_grad_norm_(self.parameters(), self.data['sGradClipAmt'])
 
                 optimizer.step()
 
-            # The y_pred.max(1)[1] return the indices of max value on each row of a tensor (the y_pred is a tensor)
-            accuracy_evaluator.data = {
-                'true_y': fold_true.cpu(), 'pred_y': fold_pred.cpu().max(dim=1)[1]}
-            # accuracy_evaluator.data = {'true_y': y_true, 'pred_y': y_pred.max(dim=1)}
-            acc = accuracy_evaluator.evaluate()
-            loss = train_loss.item()
-            print('Epoch:', epoch, 'Accuracy:',
-                    acc, 'Loss:', loss)
+            if epoch % 1 == 0:
+                # The y_pred.max(1)[1] return the indices of max value on each row of a tensor (the y_pred is a tensor)
+                accuracy_evaluator.data = {
+                    'true_y': fold_true.cpu(), 'pred_y': fold_pred.cpu().max(dim=1)[1]}
+                # accuracy_evaluator.data = {'true_y': y_true, 'pred_y': y_pred.max(dim=1)}
+                acc = accuracy_evaluator.evaluate()
+                loss = train_loss.item()
+                print('Epoch:', epoch, 'Accuracy:',
+                      acc, 'Loss:', loss)
 
             # Record data for ploting
             self.lossList.append(loss)
@@ -204,9 +215,9 @@ class Method_Classification(method, nn.Module):
 
             # Check learning progress
             for name, weight in self.named_parameters():
-                if 'bertModel' not in name:
-                    self.writer.add_histogram(name, weight, epoch)
-                    self.writer.add_histogram(f'{name}.grad', weight.grad, epoch)
+                # print(f'name: {name}, weight: {weight}, at this epoch: {epoch}')
+                self.writer.add_histogram(name, weight, epoch)
+                # self.writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
     def test(self, X):
         # Set to test mode
@@ -223,13 +234,7 @@ class Method_Classification(method, nn.Module):
 
     def run(self):
         #! Visualize the architecture
-        # unsqueeze to have 1 as batch number dimension
-        # print(f"Data type is: {type(self.data['train']['X'][0])}")
-        # print(f"Value is: {self.data['train']['X'][0]}")
-        # print(f"INSIDE run: {self.data['train']['X'][0:3]}")
         inputBatch = torch.stack(self.embeddingBatchToEntry(self.data['train']['X'][0:self.data['sBatchSize']])).cuda()
-        # print(f'value: {inputBatch}')
-        # print(f'Shape of input: {inputBatch.shape}')
 
         self.writer.add_graph(self, inputBatch)
 
