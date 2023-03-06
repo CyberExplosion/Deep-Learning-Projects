@@ -1,19 +1,21 @@
 # Custom made for BERT
 
 from code.base_class.dataset import dataset
-import torch
+import pandas as pd
 from transformers import BertTokenizer, BertModel
 from pathlib import Path
 import re
 import pickle
+import nltk
 from tqdm import tqdm, trange
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
+from torchtext.vocab import build_vocab_from_iterator
+import torch
 
 class Dataset_Loader(dataset):
     data = {}
-
-    def __init__(self, dName=None, dDescription=None, task='test_data'):
+    def __init__(self, dName=None, dDescription=None, task='test_data', inputLenNeedForSeq=3):
         super().__init__(dName)
         self.processingData = {
             'train': [],
@@ -33,49 +35,7 @@ class Dataset_Loader(dataset):
         self.picklePath = 'P4/saved'
         self.task = task
         self.bertBatchSize = 100
-
-#     def saveTensorToPickle(self, tensorData: dict):
-#         # Since it is a very big data (with 50000 reviews), save pickle with increment of 5000 review eachs
-#         try:
-#             with open(f'{self.picklePath}/{self.task}-pickleObjLen.pickle', 'rb') as handle:
-#                 tensorLen = pickle.load(file=handle)
-#         except FileNotFoundError:
-#             print('file pickelObjLen.pickle not found. Creating count from begining')
-#             tensorLen = {
-#                 'train': {
-#                     'X': 0,
-#                     'y': 0,
-#                 },
-#                 'test': {
-#                     'X': 0,
-#                     'y': 0
-#                 }
-#             }
-#             
-#         if 'train' in tensorData.keys():
-#             with open(f"{self.picklePath}/{self.task}-TrainTensorX.pickle", 'ab') as handle:
-#                 for each in tensorData['train']['X']:
-#                     pickle.dump(each, file=handle, protocol=pickle.HIGHEST_PROTOCOL)
-#                     tensorLen['train']['X'] += 1
-#             with open(f"{self.picklePath}/{self.task}-TrainTensorY.pickle", 'ab') as handle:
-#                 for each in tensorData['train']['y']:
-#                     pickle.dump(each, file=handle, protocol=pickle.HIGHEST_PROTOCOL)
-#                     tensorLen['train']['y'] += 1
-# 
-#         if 'test' in tensorData.keys():
-#             with open(f"{self.picklePath}/{self.task}-TestTensorX.pickle", 'ab') as handle:
-#                 for each in tensorData['test']['X']:
-#                     pickle.dump(each, file=handle, protocol=pickle.HIGHEST_PROTOCOL)
-#                     tensorLen['test']['X'] += 1
-#             with open(f"{self.picklePath}/{self.task}-TestTensorY.pickle", 'ab') as handle:
-#                 for each in tensorData['test']['y']:
-#                     pickle.dump(each, file=handle, protocol=pickle.HIGHEST_PROTOCOL)
-#                     tensorLen['test']['y'] += 1
-#         
-#         with open(f'{self.picklePath}/{self.task}-pickleObjLen.pickle', 'ab') as handle:
-#             pickle.dump(tensorLen, file=handle, protocol=pickle.HIGHEST_PROTOCOL)
-        
-
+        self.numWordInput = inputLenNeedForSeq
 
     def loadTokenizedData(self) -> dict:
         with open(f'{self.picklePath}/{self.task}-tokenizedData.pickle', 'rb') as handle:
@@ -85,77 +45,152 @@ class Dataset_Loader(dataset):
     def tokenize(self, save=False) -> dict:
         # * 1 is for positive, 0 is negative
         print('loading data....')
-        processedData = {
-            'train': [],
-            'test': []
-        }
-
-        for p in Path(self.dataPath, 'train', 'pos').glob('*.txt'):  # 1 is pos and 0 is neg
-            entry = p.read_text(encoding='utf8')
-            processedData['train'].append((entry, 1))
-        for p in Path(self.dataPath, 'train', 'neg').glob('*.txt'):  # 1 is pos and 0 is neg
-            entry = p.read_text(encoding='utf8')
-            processedData['train'].append((entry, 0))
-
-        for p in Path(self.dataPath, 'test', 'pos').glob('*.txt'):  # 1 is pos and 0 is neg
-            entry = p.read_text(encoding='utf8')
-            processedData['test'].append((entry, 1))
-        for p in Path(self.dataPath, 'test', 'neg').glob('*.txt'):  # 1 is pos and 0 is neg
-            entry = p.read_text(encoding='utf8')
-            processedData['test'].append((entry, 0))
-
-        # Clean the training data
-        cleanedData = []
-        CLEANHTML = re.compile('<.*?>')
-
-        for entry in processedData['train']:
-            # ! Hope the data doesn't contain heavy html tags or else it wouldn't work
-            text = re.sub(CLEANHTML, '', entry[0])
-            text = text.lower()
-            cleanedData.append((text, entry[1]))
-
-        # Tokenizing the data
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        BERT_MAX_LENGTH = 512
-        inputData = {
-            'train': {
-                'X': [],
-                'y': []
-            },
-            'test': {
-                'X': [],
-                'y': []
+        if self.task != 'text_generation':
+            processedData = {
+                'train': [],
+                'test': []
             }
-        }
+            for p in Path(self.dataPath, 'train', 'pos').glob('*.txt'):  # 1 is pos and 0 is neg
+                entry = p.read_text(encoding='utf8')
+                processedData['train'].append((entry, 1))
+            for p in Path(self.dataPath, 'train', 'neg').glob('*.txt'):  # 1 is pos and 0 is neg
+                entry = p.read_text(encoding='utf8')
+                processedData['train'].append((entry, 0))
 
-        for i, (text, label) in enumerate(tqdm(processedData['train'], desc='Passing train data through tokenizer')):
-            out = tokenizer(text, padding='max_length', add_special_tokens=True)
-            tokenized = out['input_ids']
-            tokenType = out['token_type_ids']
-            attention = out['attention_mask']
-            truncated = {
-                # keep special start and end symbol
-                'input_ids': tokenized[0:1] + tokenized[-(BERT_MAX_LENGTH-1):],
-                'token_type_ids': tokenType[0:1] + tokenType[-(BERT_MAX_LENGTH-1):],
-                'attention_mask': attention[0:1] + attention[-(BERT_MAX_LENGTH-1):],
-            }
-            inputData['train']['X'].append(truncated)
-            inputData['train']['y'].append(label)
+            for p in Path(self.dataPath, 'test', 'pos').glob('*.txt'):  # 1 is pos and 0 is neg
+                entry = p.read_text(encoding='utf8')
+                processedData['test'].append((entry, 1))
+            for p in Path(self.dataPath, 'test', 'neg').glob('*.txt'):  # 1 is pos and 0 is neg
+                entry = p.read_text(encoding='utf8')
+                processedData['test'].append((entry, 0))
 
-        # ! SKIP the test data tokenizing for testing purposes
-        for i, (text, label) in enumerate(tqdm(processedData['test'], desc='Passing test data through tokenizer')):
-            out = tokenizer(text, padding='max_length',
-                            max_length=BERT_MAX_LENGTH, add_special_tokens=True)
-            tokenized = out['input_ids']
-            tokenType = out['token_type_ids']
-            attention = out['attention_mask']
-            truncated = {
-                'input_ids': tokenized[0:1] + tokenized[-(BERT_MAX_LENGTH-1):],
-                'token_type_ids': tokenType[0:1] + tokenType[-(BERT_MAX_LENGTH-1):],
-                'attention_mask': attention[0:1] + attention[-(BERT_MAX_LENGTH-1):],
+            # Clean the training data
+            cleanedData = []
+            CLEANHTML = re.compile('<.*?>')
+
+            for entry in processedData['train']:
+                # ! Hope the data doesn't contain heavy html tags or else it wouldn't work
+                text = re.sub(CLEANHTML, '', entry[0])
+                text = text.lower()
+                cleanedData.append((text, entry[1]))
+
+            # Tokenizing the data
+            tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+            BERT_MAX_LENGTH = 512
+            inputData = {
+                'train': {
+                    'X': [],
+                    'y': []
+                },
+                'test': {
+                    'X': [],
+                    'y': []
+                }
             }
-            inputData['test']['X'].append(truncated)
-            inputData['test']['y'].append(label)
+
+            for i, (text, label) in enumerate(tqdm(processedData['train'], desc='Passing train data through tokenizer')):
+                out = tokenizer(text, padding='max_length', add_special_tokens=True)
+                tokenized = out['input_ids']
+                tokenType = out['token_type_ids']
+                attention = out['attention_mask']
+                truncated = {
+                    # keep special start and end symbol
+                    'input_ids': tokenized[0:1] + tokenized[-(BERT_MAX_LENGTH-1):],
+                    'token_type_ids': tokenType[0:1] + tokenType[-(BERT_MAX_LENGTH-1):],
+                    'attention_mask': attention[0:1] + attention[-(BERT_MAX_LENGTH-1):],
+                }
+                inputData['train']['X'].append(truncated)
+                inputData['train']['y'].append(label)
+
+            # ! SKIP the test data tokenizing for testing purposes
+            for i, (text, label) in enumerate(tqdm(processedData['test'], desc='Passing test data through tokenizer')):
+                out = tokenizer(text, padding='max_length',
+                                max_length=BERT_MAX_LENGTH, add_special_tokens=True)
+                tokenized = out['input_ids']
+                tokenType = out['token_type_ids']
+                attention = out['attention_mask']
+                truncated = {
+                    'input_ids': tokenized[0:1] + tokenized[-(BERT_MAX_LENGTH-1):],
+                    'token_type_ids': tokenType[0:1] + tokenType[-(BERT_MAX_LENGTH-1):],
+                    'attention_mask': attention[0:1] + attention[-(BERT_MAX_LENGTH-1):],
+                }
+                inputData['test']['X'].append(truncated)
+                inputData['test']['y'].append(label)
+
+        else: # ! Text Generation
+            processedData = []
+            generationDataPath = Path(self.dataPath, 'data')
+            textIn = pd.read_csv(generationDataPath)
+            for each in textIn.loc[:, 'Joke']:
+                processedData.append(each)
+
+            # Clean data
+            print('cleaning data ...')
+            cleanedData = []
+            nltk.download('popular')
+            CLEANHTML = re.compile('<.*?>')
+            stopWords = set(stopwords.words('english'))
+            for joke in processedData:
+                text = re.sub(CLEANHTML, '', joke)
+                # split into white space
+                wordList = nltk.word_tokenize(text)
+                # remove symbol and stop words
+                wordList = [word.lower() for word in wordList if word.isalpha() and word not in stopWords]
+                wordList.append('<EOS>')
+                cleanedData.append(wordList)
+
+            # Build vocabs and tokenized
+            vocabs = build_vocab_from_iterator(cleanedData, specials=['<UNK>'])
+            vocabs.set_default_index(vocabs['<UNK>'])
+            tokenizedData = []
+            for joke in cleanedData:
+                tokenized = vocabs(joke)
+                tokenizedData.append(tokenized)
+            vocab_size = len(vocabs)
+            
+            # Sequence text to input and output, adjustable
+            seqLen = self.numWordInput + 1
+            sequences = []
+            for joke in tqdm(cleanedData, desc='Sequence generation progress'):
+                for i in range(seqLen, len(joke)):
+                    # select sequence of token
+                    seq = joke[i-seqLen:i]
+                    # convert to a line
+                    line = ' '.join(seq)
+                    # store
+                    sequences.append(line)
+
+            # Tokenized the Sequences
+            tokenizedSequences = []
+            for each in sequences:
+                wordList = nltk.word_tokenize(each)
+                tokenized = vocabs(wordList)
+                tokenizedSequences.append(tokenized)
+
+            # Build input and output
+            X = []
+            y = []
+            for each in tokenizedSequences:
+                if len(each) == seqLen:
+                    X.append(each[:-1])
+                    # Make y one hot encode
+                    y.append(each[-1])
+                else:
+                    print(f'The not fit tokenized: {each}')
+                    sentence = []
+                    for word in each:
+                        sentence.append(vocabs.lookup_token(word))
+                    print(f'It representation is: {sentence}')
+
+            # * USE THIS AFTER LOADING  
+            # ! This for one hot encoding
+            # tensorY = torch.nn.functional.one_hot(torch.tensor(y), num_classes=vocab_size)
+            tensorY = torch.tensor(y)
+            tensorX = torch.tensor(X)
+            inputData = {
+                'X': tensorX,
+                'y': tensorY
+            }
 
         if save:
             print('saving the tokenized data...')
@@ -165,9 +200,16 @@ class Dataset_Loader(dataset):
         return inputData
     
 
-# test = Dataset_Loader(task='test_data_big')
+# test = Dataset_Loader(task='text_generation')
 # res = test.tokenize(save=True)
+# print(len(res['X']))
+# print(res['X'][4])
 # 
+# print('Using saved, should have some output:')
+# loaded = test.loadTokenizedData()
+# print(len(loaded['X']))
+# print(len(loaded['X'][4]))
+
 # print(len(res['train']['X']))
 # print(res['train']['X'][4])
 # print(res['train']['X'][4])

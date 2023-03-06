@@ -8,6 +8,7 @@ Concrete SettingModule class for a specific experimental SettingModule
 from code.base_class.setting import setting
 from Dataset_Loader import Dataset_Loader
 from Method_Classification import Method_Classification
+from Method_Generation import Method_Generation
 from Result_Saver import Result_Saver
 from Evaluate_Accuracy import Evaluate_Accuracy
 import numpy as np
@@ -40,7 +41,7 @@ class Settings(setting):
 
         self.prepare(
             sDataset=Dataset_Loader(task=self.task),
-            sMethod=Method_Classification(),
+            sMethod=Method_Classification() if sTask == 'text_classification' else Method_Generation(),
             sEvaluate=Evaluate_Accuracy(),
             sResult=Result_Saver()
         )
@@ -64,7 +65,7 @@ class Settings(setting):
 
             
         # run MethodModule
-        learned_result = self.method.run()  # From the Method MLP
+        learned_result = self.method.run()
             
         # save raw ResultModule
         # self.result.data = learned_result
@@ -75,7 +76,6 @@ class Settings(setting):
 
         self.evaluate.data = learned_result
         self.evaluate.printOveralPerformance()
-        self.evaluate.plotLossGraph()
 
         self.result.data['acc'] = self.evaluate.evaluate()
         # self.result.save()

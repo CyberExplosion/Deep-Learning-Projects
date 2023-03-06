@@ -27,9 +27,9 @@ class Method_Classification(method, nn.Module):
         'sGradClipAmt': 0.5,
         'sDropout': 0.5,
         'sOutputDim': 2,    # Binary classification
-        'sLearningRate': 1e-4,
+        'sLearningRate': 1e-6,
         'sMomentum': 0.9,
-        'sMaxEpoch': 5,  # ! CHANGE LATER
+        'sMaxEpoch': 7,  # ! CHANGE LATER
         'sBatchSize': 100,  # Lower than 4000 is required
         'sRandSeed': 47
     }
@@ -57,7 +57,7 @@ class Method_Classification(method, nn.Module):
         ])
         self.outputLayer = OrderedDict([
             ('flatten_layer_2', nn.Flatten()),
-            ('linear_layer_2', nn.Linear(in_features=262144, out_features=self.data['sOutputDim'])) # ! Potentially wrong size, change the input later
+            ('linear_layer_2', nn.Linear(in_features=262144, out_features=self.data['sOutputDim']))
         ])
 
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
@@ -100,7 +100,6 @@ class Method_Classification(method, nn.Module):
         '''Forward propagation'''
         out = x
         for name, func in self.layers.items():
-            # print(f'{name} - {out.shape}')
             if 'rnn' in name:
                 out = func(out)[0]  # we dont use the hidden states from rnn
             else:
@@ -116,7 +115,6 @@ class Method_Classification(method, nn.Module):
     # MAKE SURE TO STACK THEM TO BATCHES
     def embeddingBatchToEntry(self, batchX) -> list:
         #! Pass through BERT use multiple batches for better efficiency
-        # for i, each in enumerate(tqdm(inputData['train']['X'], desc="Embedding Train data on BERT")):
         embeddedBatches = []
         with torch.no_grad():
             tokenList = []
@@ -164,23 +162,18 @@ class Method_Classification(method, nn.Module):
                 indices = permutation[i:i+self.data['sBatchSize']]
                 batchX, batchY = [X[i] for i in indices], [y[i] for i in indices]   # batches
 
-                # batchedEmbedding = self.embeddingBatchToEntry(batchX)
                 batchXTensor = torch.stack(self.embeddingBatchToEntry(batchX))
-                # print(f'Len of the batch Tensor: {len(batchXTensor)}')
 
                 # ! Begin forward here
                 fold_pred = self.forward(batchXTensor.cuda())
                 fold_true = torch.LongTensor(np.array(batchY)).cuda()
 
-                # print(f'len of the target batch: {fold_true.shape}')
-                # print(f'len of the predicted batch: {fold_pred.shape}')
-                
                 # calculate the training loss
                 train_loss = loss_function(fold_pred, fold_true)
                 optimizer.zero_grad()
                 train_loss.backward()
 
-                # TODO: Potential modification
+                #TODO: Potential modification
                 # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
                 torch.nn.utils.clip_grad_norm_(self.parameters(), self.data['sGradClipAmt'])
 
@@ -223,10 +216,6 @@ class Method_Classification(method, nn.Module):
 
     def run(self):
         #! Visualize the architecture
-        # unsqueeze to have 1 as batch number dimension
-        # print(f"Data type is: {type(self.data['train']['X'][0])}")
-        # print(f"Value is: {self.data['train']['X'][0]}")
-        # print(f"INSIDE run: {self.data['train']['X'][0:3]}")
         inputBatch = torch.stack(self.embeddingBatchToEntry(self.data['train']['X'][0:self.data['sBatchSize']])).cuda()
         # print(f'value: {inputBatch}')
         # print(f'Shape of input: {inputBatch.shape}')
