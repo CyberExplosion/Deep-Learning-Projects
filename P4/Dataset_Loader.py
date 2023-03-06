@@ -135,9 +135,11 @@ class Dataset_Loader(dataset):
                 # split into white space
                 wordList = nltk.word_tokenize(text)
                 # remove symbol and stop words
-                wordList = [word.lower() for word in wordList if word.isalpha() and word not in stopWords]
+                wordList = [word.lower() for word in wordList if word.isalpha()]
                 wordList.append('<EOS>')
                 cleanedData.append(wordList)
+
+            print(f'cleandData: {cleanedData}')
 
             # Build vocabs and tokenized
             vocabs = build_vocab_from_iterator(cleanedData, specials=['<UNK>'])
@@ -196,6 +198,10 @@ class Dataset_Loader(dataset):
             print('saving the tokenized data...')
             with open(f'{self.picklePath}/{self.task}-tokenizedData.pickle', 'wb') as handle:
                 pickle.dump(inputData, file=handle)
+            # save the vocab tokenizer
+            with open(f'{self.picklePath}/{self.task}-tokenizer.pickle', 'wb') as handle:
+                pickle.dump(vocabs, file=handle)
+
 
         return inputData
     

@@ -16,29 +16,30 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import BertModel
 from tqdm import trange
 
-class extract_tensorLTSM(nn.Module):
-    def forward(self,x):
-        # Output shape (batch, features, hidden)
-        tensor, _ = x
-        # Reshape shape (batch, hidden)
-        ten = tensor[:, -1, :]
-        flat = nn.Flatten()
-        ten = flat(ten)
-        return ten
+# class extract_tensorLTSM(nn.Module):
+#     def forward(self,x):
+#         # Output shape (batch, features, hidden)
+#         tensor, _ = x
+#         # Reshape shape (batch, hidden)
+#         print(f'Value of the tensor: {tensor}')
+#         ten = tensor[:, -1, :]
+#         flat = nn.Flatten()
+#         ten = flat(ten)
+#         return ten
 
 class Method_Generation(method, nn.Module):
     data = {
         'sLossFunction': 'CrossEntropy',
         'sOptimizer': 'ADAM',
         'sNumWordInput': 3,
-        'sNumSequence': 9616,
+        'sNumSequence': 18585,
         'sHiddenSize': 50,
         'sGradClipAmt': 0.5,
         'sDropout': 0.5,
-        'sVocabSize': 4330,
+        'sVocabSize': 4368,
         'sLearningRate': 1e-3,
         'sMomentum': 0.9,
-        'sMaxEpoch': 700,  # ! CHANGE LATER
+        'sMaxEpoch': 500,  # ! CHANGE LATER
         'sRandSeed': 47
     }
 
@@ -66,10 +67,10 @@ class Method_Generation(method, nn.Module):
         self.hiddenLayer = OrderedDict([
             ('lstm_layer_1', nn.LSTM(input_size=self.data['sVocabSize'],
                                      hidden_size=self.data['sHiddenSize'])),
-            ('lstm_output_layer', extract_tensorLTSM())
         ])
         self.outputLayer = OrderedDict([
-            ('linear_layer_2', nn.Linear(in_features=self.data['sHiddenSize'], out_features=self.data['sVocabSize']))
+            ('flatten_layer', nn.Flatten()),   # No batch
+            ('linear_layer_2', nn.Linear(in_features=150, out_features=self.data['sVocabSize']))
         ])
 
         if self.data['sLossFunction'] != 'CrossEntropy':
@@ -107,7 +108,10 @@ class Method_Generation(method, nn.Module):
         '''Forward propagation'''
         out = x
         for name, func in self.layers.items():
-            out = func(out)
+            if 'lstm' in name:
+                out = func(out)[0]
+            else:
+                out = func(out)
         return out
 
     def trainModel(self, X, y):
@@ -173,7 +177,7 @@ class Method_Generation(method, nn.Module):
         with torch.no_grad():
             # TODO: Change into using the whole thing instead of using batch
             inTensor = X.cuda()
-            y_predTotal.extend(self.forward(inTensor).cpu().max(dim=1)[1])
+            y_predTotal = self.forward(inTensor).cpu().max(dim=1)[1]
 
         return y_predTotal
 
