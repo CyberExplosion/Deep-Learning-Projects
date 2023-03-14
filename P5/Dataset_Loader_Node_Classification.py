@@ -9,6 +9,9 @@ from code.base_class.dataset import dataset
 import torch
 import numpy as np
 import scipy.sparse as sp
+import pickle
+from pathlib import Path
+from glob import glob
 
 class Dataset_Loader(dataset):
     data = None
@@ -19,8 +22,9 @@ class Dataset_Loader(dataset):
 
         # ! Testing purposes
         self.dataset_name = dDataset
-        self.dataset_source_folder_path = 'data/cora'
-        # self.dataset_source_folder_path = 'P5/data/cora'
+        # self.dataset_source_folder_path = 'data/cora'
+        self.dataset_source_folder_path = f'P5/data/{dDataset}'
+        self.picklePath = f'P5/saved/'
 
     def adj_normalize(self, mx):
         """normalize sparse matrix"""
@@ -45,7 +49,7 @@ class Dataset_Loader(dataset):
         onehot_labels = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)
         return onehot_labels
 
-    def load(self):
+    def load(self, save=False):
         """Load citation network dataset"""
         print('Loading {} dataset...'.format(self.dataset_name))
 
@@ -92,8 +96,9 @@ class Dataset_Loader(dataset):
         norm_adj = self.adj_normalize(adj + sp.eye(adj.shape[0]))
 
         # convert to pytorch tensors
-        features = torch.FloatTensor(np.array(features.todense()))
-        labels = torch.LongTensor(np.where(onehot_labels)[1])
+        # Don't turn into tensors yet
+        features = features.todense()
+        labels = np.where(onehot_labels)[1]
         adj = self.sparse_mx_to_torch_sparse_tensor(norm_adj)   # The normalized link matrix
 
 
@@ -120,19 +125,43 @@ class Dataset_Loader(dataset):
             idx_test = range(5, 10)
             # idx_val = range(5, 10)
 
-        idx_train = torch.LongTensor(idx_train)
-        idx_test = torch.LongTensor(idx_test)
-        # idx_val = torch.LongTensor(idx_val)
-        # get the training nodes/testing nodes
-        # train_x = features[idx_train]
-        # val_x = features[idx_val]
-        # test_x = features[idx_test]
-        # print(train_x, val_x, test_x)
+        # Only get the edges that matter in the train and test set
+        # trainingEdge = []
+        # for idx in idx_train:
+        #     linksWithThisIdx = [e.tolist() for e in edges if e[0] <= idx_train[-1] and e[1] <= idx_train[-1]] # sort out all the index that is not in
+        #     if linksWithThisIdx:
+        #         trainingEdge.extend(linksWithThisIdx)
+        # testingEdge = []
+        # for idx in idx_test:
+        #     linksWithThisIdx = [e.tolist() for e in edges if e[0] <= idx_test[-1] and e[1] <= idx_test[-1]] # sort out all the index that is not in
+        #     if linksWithThisIdx:
+        #         testingEdge.extend(linksWithThisIdx)
+        idxTrainRange = (idx_train[0], idx_train[-1])
+        idxTestRange = (idx_test[0], idx_test[-1])
+
+        # Don't turn it into tensor yet, we do that during training
+        # idx_train = torch.LongTensor(idx_train)
+        # idx_test = torch.LongTensor(idx_test)
 
         train_test = {'idx_train': idx_train, 'idx_test': idx_test}
         graph = {'node': idx_map, 'edge': edges, 'X': features, 'y': labels, 'utility': {'A': adj, 'reverse_idx': reverse_idx_map}}
-        return {'graph': graph, 'train_test': train_test}
+        ret = {'graph': graph, 'train_test': train_test}
+
+        # Save the result so you don't have build the data set again
+        if save:
+            with open(f'{self.picklePath}/{self.dataset_name}-loadedData-trainIdxRange{idxTrainRange}-testIdxRange{idxTestRange}.pk', mode='wb') as file:
+                pickle.dump(ret, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        return ret
+    
+    def load_savedData(self):
+        for file in Path(self.picklePath).glob(f'*{self.dataset_name}-loadedData*'):
+            with open(file, mode='rb') as handle:
+                loadedData = pickle.load(handle)
+            print(f'load using file: {file}')
+
+        return loadedData
+
 
 # obj = Dataset_Loader()
-# res = obj.load()
-# print(res)
+# res = obj.load(save=True)
