@@ -97,8 +97,8 @@ class Dataset_Loader(dataset):
 
         # convert to pytorch tensors
         # Don't turn into tensors yet
-        features = features.todense()
-        labels = np.where(onehot_labels)[1]
+        features = torch.FloatTensor(np.array(features.todense()))
+        labels = torch.LongTensor(np.where(onehot_labels)[1])
         adj = self.sparse_mx_to_torch_sparse_tensor(norm_adj)   # The normalized link matrix
 
 
@@ -155,13 +155,12 @@ class Dataset_Loader(dataset):
         return ret
     
     def load_savedData(self):
-        for file in Path(self.picklePath).glob(f'*{self.dataset_name}-loadedData*'):
+        for file in Path(self.picklePath).glob(f'*{self.dataset_name}-loadedData-trainIdxRange(0, 2707)*'):
             with open(file, mode='rb') as handle:
                 loadedData = pickle.load(handle)
             print(f'load using file: {file}')
 
         return loadedData
-
 
 # obj = Dataset_Loader()
 # res = obj.load(save=True)

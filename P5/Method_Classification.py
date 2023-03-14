@@ -26,7 +26,7 @@ class Method_Classification(method, nn.Module):
         'sLearningRate': 1e-6,
         'sMomentum': 0.9,
         'sMaxEpoch': 7,  # ! CHANGE LATER
-        'sBatchSize': 2,  # Lower than 4000 is required
+        'sBatchSize': 3000,  # Lower than 4000 is required
         'sRandSeed': 47
     }
 
@@ -48,22 +48,20 @@ class Method_Classification(method, nn.Module):
         self.writer = SummaryWriter(
             comment=self.model_res_name)
         
-        self.inputLayer = OrderedDict([
-            ('gcnconv_layer_1', geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=50)),
-            ('activation_1', nn.ReLU()),
-            ('gcnconv_layer_2', geonn.GCNConv(in_channels=50, out_channels=self.data['sOutputDim'])),
+        self.layers = geonn.Sequential('x, edge_index',[
+            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=7), 'x, edge_index -> x'),
+            nn.ReLU()
         ])
-        self.outputLayer = OrderedDict()
 
         # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
         # ? https://stackoverflow.com/questions/55675345/should-i-use-softmax-as-output-when-using-cross-entropy-loss-in-pytorch
-        if self.data['sLossFunction'] != 'CrossEntropy':
-            self.outputLayer['output'] = nn.Softmax(dim=1)
-        else:
-            self.outputLayer['output'] = nn.Sigmoid()
+        # if self.data['sLossFunction'] != 'CrossEntropy':
+        #     self.outputLayer['output'] = nn.Softmax(dim=1)
+        # else:
+        #     self.outputLayer['output'] = nn.ReLU()
 
-        # Compile all layers
-        self.layers = nn.ModuleDict(self.compileLayers())
+        # # Compile all layers
+        # self.layers = nn.ModuleDict(self.compileLayers())
 
         if self.data['sLossFunction'] == 'MSE':
             self.lossFunction = nn.MSELoss()
@@ -79,25 +77,22 @@ class Method_Classification(method, nn.Module):
                                               lr=self.data['sLearningRate'])
         self.lossList = []  # for plotting loss
 
-        self.cuda()
+        # self.cuda()   # ! Try without cuda for graph
 
-    def compileLayers(self) -> OrderedDict:
-        res = OrderedDict()
-        res.update(self.inputLayer)
-        res.update(self.outputLayer)
-        return res
+    # def compileLayers(self) -> OrderedDict:
+    #     res = OrderedDict()
+    #     res.update(self.inputLayer)
+    #     res.update(self.outputLayer)
+    #     return res
 
-    def forward(self, x):
+    def forward(self, x, edge_index):
         '''Forward propagation'''
-        out = x
-         #! Need to be different if passing GCN to other layers
-        for name, func in self.layers.items():
-            out = func(out)
+        out = self.layers(x, edge_index)
         return out
 
     def trainModel(self, X, y):
         # #!!!! Debugging 
-        # torch.autograd.set_detect_anomaly(True)
+        torch.autograd.set_detect_anomaly(True)
 
         # Turn on train mode for all layers and prepare data
         self.training = True
@@ -172,56 +167,51 @@ class Method_Classification(method, nn.Module):
         edgeList: list
             The list of all edges. Each entry in the list in the form of [index cited, index cited from]
         '''
-        edgeMatterList = []
         # print(f'The value of batch {batchX}')
         # print(f'The value in edgeList {edgeList}')
 
         # TODO: Count how many [0, 8] show up in edge List
-        print(f'Count: {edgeList.count([0, 8])}')   #! 200 count ??????
-        return
+        # print(f'Count: {edgeList.count([0, 8])}')
         
+        edgeMatterList = []
         for idx in batchX:
-            # TODO: Find out why too many repitition in linksWithThisIdx
-            print(f'Idx value in this loop: {idx}')
-            linksWithThisIdx = [e for e in edgeList if e[0] == idx] # ! ONLY get the cited
+            linksWithThisIdx = [e for e in edgeList if e[0] == idx or e[1] == idx] # ! ONLY get the cited
             if linksWithThisIdx:
-                print(f'at idx {idx}, the linksWIththisIDx is: {linksWithThisIdx}')
                 edgeMatterList.extend(linksWithThisIdx)
         return edgeMatterList
 
     def run(self):
         #! Visualize the architecture
-        # inputBatch = torch.stack(self.embeddingBatchToEntry(self.data['train']['X'][0:self.data['sBatchSize']])).cuda()
-        # print(self.data['graph']['X'][0:self.data['sBatchSize']])
-        inputBatch = torch.tensor(self.data['graph']['X'][0:self.data['sBatchSize']])
-        
         batchIndexList = self.data['train_test']['idx_train'][0:self.data['sBatchSize']]
         print(f"The batch index list: {batchIndexList}")
-        # TODO: USE THE WHOLE edge list and filter out the one we need during training - because of batches
-        # print(f"Shape of the features: {self.data['graph']['X'].shape}")
-        # print(f"Shape of the features element: {self.data['graph']['X'][0].shape}")
-        # print(f"Shape of the features element: {np.squeeze(np.asarray(self.data['graph']['X'][0])).shape}")
-        # print(f"Type of the features element: {type(np.squeeze(np.asarray(self.data['graph']['X'][0])))}")
 
-        # print(f"Testing one element: {self.data['graph']['X'][0].tolist()}. The type: {type(self.data['graph']['X'][0].tolist())}")
-        # print(f"The shape of object: {len(self.data['graph']['X'][0].tolist()[0])}")
+        #  USE THE WHOLE edge list and filter out the one we need during training - because of batches
+        # ! CANNOT do it in batches, because you have to include the neighbor node in that edges also in the features tensor
+
+        
+        
+        # TODO: CAN DO IT in batches, if you account for both end of the edges IS in the batch index
+        
+        
+        edges = self.data['graph']['edge']
+        print(f'Shape of edge: {edges.shape}')
 
         inputBatchList = [np.squeeze(np.asarray(self.data['graph']['X'][index])) for index in batchIndexList]
-        edgeList = self.getEdgesThatMatter(batchIndexList, self.data['graph']['edge'])
-        edgeList = torch.tensor(edgeList).cuda()
+        inputBatchTensor = torch.FloatTensor(np.array(inputBatchList))
+        print(f'The feature input is: {inputBatchTensor}')
+        print(f'The shape of feature input is: {inputBatchTensor.shape}')   # 2,1433 - batch of size 2
+
+        # edgeList = self.getEdgesThatMatter(batchIndexList, edges)
+        # edgeTensor = torch.LongTensor(np.array(edgeList)).T
+        edgeTensor = torch.LongTensor(np.array(edges)).T
         
-        # print(f'value edge list: {edgeList}')
-        # print(f'Shape of edge list: {edgeList.shape}')
+        print(f'value edge list: {edgeTensor}')
+        print(f'Shape of edge list: {edgeTensor.shape}')
+        # return
+        
+        self.writer.add_graph(self, input_to_model=(inputBatchTensor, edgeTensor))
         return
-        
-        inputBatch = inputBatch.cuda()
-        print(f'value: {inputBatch}')
-        print(f'Shape of input: {inputBatch.shape}')
-
-
-
-        self.writer.add_graph(self, input_to_model=(inputBatch, edgeList))
-
+    
         #! Actual run
         print('method running...')
         print('--network status--')
