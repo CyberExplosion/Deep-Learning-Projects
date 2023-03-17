@@ -48,17 +48,16 @@ class Settings(setting):
                 sEvaluate=Evaluate_Accuracy(),
                 sResult=Result_Saver()
             )
-        # elif self.dataName == "ORL":
-        #     self.trainParam['sDataName'] = 'ORL'
-        #     self.trainParam['sInputDim'] = (112,92)
-        #     self.trainParam['sInChannels'] = 3
-        #     self.trainParam['sOutputDim'] = 40
-        #     self.prepare(
-        #         sDataset=Dataset_Loader(sDataset=self.dataName),
-        #         sMethod=Method_ORL(sData=self.trainParam),
-        #         sEvaluate=Evaluate_Accuracy(),
-        #         sResult=Result_Saver()
-        #     )
+        elif self.dataName == "citeseer":
+            self.trainParam['sDataName'] = 'citeseer'
+            self.trainParam['sInputDim'] = 3703
+            self.trainParam['sOutputDim'] = 6
+            self.prepare(
+                sDataset=Dataset_Loader(dDataset=self.dataName),
+                sMethod=Method_Classification(sData=self.trainParam),
+                sEvaluate=Evaluate_Accuracy(),
+                sResult=Result_Saver()
+            )
         # elif self.dataName == "CIFAR":
         #     self.trainParam['sDataName'] = 'CIFAR'
         #     self.trainParam['sInputDim'] = (32,32)
@@ -100,6 +99,3 @@ class Settings(setting):
 
 
         return self.result.data['acc']
-
-test = Settings(sUseSave=True)
-res = test.load_run_save_evaluate()

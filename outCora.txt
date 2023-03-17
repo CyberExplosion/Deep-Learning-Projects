@@ -1,0 +1,56 @@
+Loading cora dataset...
+method running...
+--network status--
+==========================================================================================
+Layer (type:depth-idx)                   Output Shape              Param #
+==========================================================================================
+Method_Classification                    [2708, 7]                 --
+├─Sequential_5df26e: 1-1                 [2708, 7]                 --
+│    └─GCNConv: 2-1                      [2708, 16]                16
+│    │    └─Linear: 3-1                  [2708, 16]                22,928
+│    │    └─SumAggregation: 3-2          [2708, 16]                --
+│    └─ReLU: 2-2                         [2708, 16]                --
+│    └─GCNConv: 2-3                      [2708, 7]                 7
+│    │    └─Linear: 3-3                  [2708, 7]                 112
+│    │    └─SumAggregation: 3-4          [2708, 7]                 --
+│    └─ReLU: 2-4                         [2708, 7]                 --
+==========================================================================================
+Total params: 23,063
+Trainable params: 23,063
+Non-trainable params: 0
+Total mult-adds (M): 62.39
+==========================================================================================
+Input size (MB): 15.61
+Forward/backward pass size (MB): 0.50
+Params size (MB): 0.09
+Estimated Total Size (MB): 16.20
+==========================================================================================
+--start training...
+Epoch: 0 Accuracy: 0.16322008862629248 Loss: 1.948410987854004
+Epoch: 100 Accuracy: 0.5225258493353028 Loss: 1.7533321380615234
+Epoch: 200 Accuracy: 0.6355243722304283 Loss: 1.5073539018630981
+Epoch: 300 Accuracy: 0.7278434268833087 Loss: 1.2783771753311157
+Epoch: 400 Accuracy: 0.7603397341211225 Loss: 1.1082043647766113
+Epoch: 500 Accuracy: 0.7810192023633677 Loss: 0.9800235033035278
+Epoch: 600 Accuracy: 0.7920974889217134 Loss: 0.8811208009719849
+Epoch: 700 Accuracy: 0.8057607090103397 Loss: 0.7996624112129211
+Epoch: 800 Accuracy: 0.8626292466765141 Loss: 0.6771851778030396
+Epoch: 900 Accuracy: 0.8799852289512555 Loss: 0.5827798843383789
+--start testing...
+run performace metrics: 
+              precision    recall  f1-score   support
+
+           0       0.85      0.83      0.84        89
+           1       0.71      0.52      0.60        33
+           2       0.80      0.65      0.71        62
+           3       0.91      0.93      0.92        95
+           4       0.80      0.79      0.80        42
+           5       0.80      0.91      0.85       164
+           6       0.78      0.75      0.77        57
+
+    accuracy                           0.82       542
+   macro avg       0.81      0.77      0.78       542
+weighted avg       0.82      0.82      0.82       542
+
+saving models...
+Accurarcy is: 82.10332103321034%

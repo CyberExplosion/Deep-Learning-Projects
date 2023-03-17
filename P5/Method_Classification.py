@@ -21,13 +21,12 @@ class Method_Classification(method, nn.Module):
     data = {
         'sLossFunction': 'CrossEntropy',
         'sOptimizer': 'ADAM',
-        'sInputDim': 768, # BERT
-        'sOutputDim': 2,    # Binary classification
-        'sLearningRate': 1e-6,
+        'sInputDim': 1433, # BERT
+        'sOutputDim': 7,    # Binary classification
+        'sLearningRate': 1e-4,
         'sMomentum': 0.9,
-        'sMaxEpoch': 7,  # ! CHANGE LATER
-        'sBatchSize': 3000,  # Lower than 4000 is required
-        'sRandSeed': 47
+        'sMaxEpoch': 3000,  # ! CHANGE LATER
+        'sRandSeed': 31
     }
 
     def __init__(self, mName='', mDescription='', sData=None):
@@ -42,26 +41,21 @@ class Method_Classification(method, nn.Module):
         self.model_res_name = 'gcn_models'
 
         for k, v in self.data.items():
-            if k != 'train' and k != 'test':
+            if k != 'graph' and k != 'train_test':
                 self.model_res_name += f'_{k}:{v}'
 
         self.writer = SummaryWriter(
             comment=self.model_res_name)
         
         self.layers = geonn.Sequential('x, edge_index',[
-            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=7), 'x, edge_index -> x'),
-            nn.ReLU()
+            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=100), 'x, edge_index -> x'),
+            nn.ReLU(),
+            (geonn.GCNConv(in_channels=100, out_channels=50), 'x, edge_index -> x'),
+            nn.ReLU(),
+            (geonn.GCNConv(in_channels=50, out_channels=self.data['sOutputDim']), 'x, edge_index -> x'),
+            nn.ReLU(),
         ])
 
-        # do not use softmax if we have nn.CrossEntropyLoss base on the PyTorch documents
-        # ? https://stackoverflow.com/questions/55675345/should-i-use-softmax-as-output-when-using-cross-entropy-loss-in-pytorch
-        # if self.data['sLossFunction'] != 'CrossEntropy':
-        #     self.outputLayer['output'] = nn.Softmax(dim=1)
-        # else:
-        #     self.outputLayer['output'] = nn.ReLU()
-
-        # # Compile all layers
-        # self.layers = nn.ModuleDict(self.compileLayers())
 
         if self.data['sLossFunction'] == 'MSE':
             self.lossFunction = nn.MSELoss()
@@ -75,22 +69,19 @@ class Method_Classification(method, nn.Module):
         else:
             self.optimizer = torch.optim.Adam(self.parameters(),
                                               lr=self.data['sLearningRate'])
+            
         self.lossList = []  # for plotting loss
+        self.trainMask, self.testMask = [], []
 
-        # self.cuda()   # ! Try without cuda for graph
+        self.cuda()   # ! Try without cuda for graph
 
-    # def compileLayers(self) -> OrderedDict:
-    #     res = OrderedDict()
-    #     res.update(self.inputLayer)
-    #     res.update(self.outputLayer)
-    #     return res
 
     def forward(self, x, edge_index):
         '''Forward propagation'''
         out = self.layers(x, edge_index)
         return out
 
-    def trainModel(self, X, y):
+    def trainModel(self, X, edge_index, y):
         # #!!!! Debugging 
         torch.autograd.set_detect_anomaly(True)
 
@@ -103,32 +94,25 @@ class Method_Classification(method, nn.Module):
 
 
         for epoch in trange(self.data['sMaxEpoch'], desc='Training epochs'):
-            permutation = torch.randperm(len(X))    # random order of batches
-            for i in trange(0, len(X), self.data['sBatchSize'], desc=f'Batch progression at epoch {epoch}'):
-                indices = permutation[i:i+self.data['sBatchSize']]
-                batchX, batchY = [X[i] for i in indices], [y[i] for i in indices]   # batches
-                # TODO: Have to generate batch edge that only matters in this batch
+            # ! Begin forward here
+            fold_pred = self.forward(X.cuda(), edge_index.cuda())
+            fold_true = torch.LongTensor(np.array(y)).cuda()
 
-                batchXTensor = torch.stack(self.embeddingBatchToEntry(batchX))
+            # ! only calculated loss using the training label
+            train_loss = loss_function(fold_pred[self.trainMask], fold_true[self.trainMask])
+            optimizer.zero_grad()
+            train_loss.backward()
 
-                # ! Begin forward here
-                fold_pred = self.forward(batchXTensor.cuda())
-                fold_true = torch.LongTensor(np.array(batchY)).cuda()
-
-                # calculate the training loss
-                train_loss = loss_function(fold_pred, fold_true)
-                optimizer.zero_grad()
-                train_loss.backward()
-
-                optimizer.step()
+            optimizer.step()
 
             # The y_pred.max(1)[1] return the indices of max value on each row of a tensor (the y_pred is a tensor)
-            accuracy_evaluator.data = {
-                'true_y': fold_true.cpu(), 'pred_y': fold_pred.cpu().max(dim=1)[1]}
-            acc = accuracy_evaluator.evaluate()
-            loss = train_loss.item()
-            print('Epoch:', epoch, 'Accuracy:',
-                    acc, 'Loss:', loss)
+            if epoch % 100 == 0:
+                accuracy_evaluator.data = {
+                    'true_y': fold_true.cpu(), 'pred_y': fold_pred.cpu().max(dim=1)[1]}
+                acc = accuracy_evaluator.evaluate()
+                loss = train_loss.item()
+                print('Epoch:', epoch, 'Accuracy:',
+                        acc, 'Loss:', loss)
 
             # Record data for ploting
             self.lossList.append(loss)
@@ -143,87 +127,58 @@ class Method_Classification(method, nn.Module):
                     self.writer.add_histogram(name, weight, epoch)
                     self.writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
-    def test(self, X):
+
+    def test(self, X, edge_index):
         # Set to test mode
-        y_predTotal = []
         self.training = False
         with torch.no_grad():
-            for i in trange(0, len(X), self.data['sBatchSize'], desc='Test data batch progress'):
-                batchX = X[i:i+self.data['sBatchSize']]
-                embeddedTestBatch = self.embeddingBatchToEntry(batchX)
-                inTensor = torch.stack(embeddedTestBatch).cuda()
-                y_predTotal.extend(self.forward(inTensor).cpu().max(dim=1)[1])
+            rawPred = self.forward(X.cuda(), edge_index.cuda())
+            testPred = rawPred[self.testMask].cpu().max(dim=1)[1]     # Only get the test label, no need the train label
 
-        return y_predTotal
+        return testPred
 
-    def getEdgesThatMatter(self, batchX:list, edgeList:list):
+
+    def createMaskForGraphData(self):
         '''
-        Use when creating batches of input
-
-        Parameters:
-        ---------------
-        batchX: list
-            The batch input (all are indices) of node ID
-        edgeList: list
-            The list of all edges. Each entry in the list in the form of [index cited, index cited from]
+        Create a mask Tensor to hide all the labels that not in train or test set
         '''
-        # print(f'The value of batch {batchX}')
-        # print(f'The value in edgeList {edgeList}')
+        numNodes = len(self.data['graph']['X'])
+        self.trainMask = torch.zeros(numNodes, dtype=torch.bool)
+        self.trainMask[self.data['train_test']['idx_train']] = True # mark true for only nodes that in the training set
 
-        # TODO: Count how many [0, 8] show up in edge List
-        # print(f'Count: {edgeList.count([0, 8])}')
-        
-        edgeMatterList = []
-        for idx in batchX:
-            linksWithThisIdx = [e for e in edgeList if e[0] == idx or e[1] == idx] # ! ONLY get the cited
-            if linksWithThisIdx:
-                edgeMatterList.extend(linksWithThisIdx)
-        return edgeMatterList
+        self.testMask = torch.zeros(numNodes, dtype=torch.bool)
+        self.testMask[self.data['train_test']['idx_test']] = True
+
 
     def run(self):
         #! Visualize the architecture
-        batchIndexList = self.data['train_test']['idx_train'][0:self.data['sBatchSize']]
-        print(f"The batch index list: {batchIndexList}")
 
         #  USE THE WHOLE edge list and filter out the one we need during training - because of batches
         # ! CANNOT do it in batches, because you have to include the neighbor node in that edges also in the features tensor
 
-        
-        
-        # TODO: CAN DO IT in batches, if you account for both end of the edges IS in the batch index
-        
-        
-        edges = self.data['graph']['edge']
-        print(f'Shape of edge: {edges.shape}')
+        # TODO: The Right way is to pass in all edges as always, but only use certain number of nodes during training
+        # TODO: WE USING transductive learning (the training know the whole graph), but it doesn't know the label of the test set => Mask the training and testing
 
-        inputBatchList = [np.squeeze(np.asarray(self.data['graph']['X'][index])) for index in batchIndexList]
-        inputBatchTensor = torch.FloatTensor(np.array(inputBatchList))
-        print(f'The feature input is: {inputBatchTensor}')
-        print(f'The shape of feature input is: {inputBatchTensor.shape}')   # 2,1433 - batch of size 2
 
-        # edgeList = self.getEdgesThatMatter(batchIndexList, edges)
-        # edgeTensor = torch.LongTensor(np.array(edgeList)).T
-        edgeTensor = torch.LongTensor(np.array(edges)).T
-        
-        print(f'value edge list: {edgeTensor}')
-        print(f'Shape of edge list: {edgeTensor.shape}')
-        # return
-        
-        self.writer.add_graph(self, input_to_model=(inputBatchTensor, edgeTensor))
-        return
+        self.createMaskForGraphData()
+        self.writer.add_graph(self, input_to_model=(self.data['graph']['X'].cuda(), self.data['graph']['edge'].cuda()))
+
     
         #! Actual run
         print('method running...')
         print('--network status--')
         summary(self, 
-                input_size=(self.data['sBatchSize'], 512, 768)
+                input_size=[self.data['graph']['X'].shape, self.data['graph']['edge'].shape],
+                dtypes=[torch.float, torch.long] 
                 )
         print('--start training...')
-        self.trainModel(self.data['train']['X'], self.data['train']['y'])
+        self.trainModel(self.data['graph']['X'], self.data['graph']['edge'], self.data['graph']['y'])
+
         print('--start testing...')
-        pred_y = self.test(self.data['test']['X'])
+        pred_y = self.test(self.data['graph']['X'], self.data['graph']['edge'])
 
         # print(f'{pred_y} and the length {len(pred_y)} also length of each')
         # ALso for tensor
-        return {'pred_y': pred_y, 'true_y': self.data['test']['y'],
+        # * Only care about the test mask
+        return {'pred_y': pred_y, 'true_y': self.data['graph']['y'][self.testMask],
                 'loss': self.lossList}

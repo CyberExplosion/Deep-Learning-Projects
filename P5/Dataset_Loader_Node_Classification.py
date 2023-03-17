@@ -75,7 +75,11 @@ class Dataset_Loader(dataset):
         # ? Turn all the node ID to the index of the idx list -> You can use the idx list to get the node ID
         # Then reshape it back to the 2d array version (before being flatten)
         # So now we have [index of the cited, index of the cited from] as one row (out of 5429)
-        edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
+        # But the training wants it to be 2 rows, with [
+        #                                               index of the cited
+        #                                               index of the cited from        ]
+        # So we going to transpose
+        edges = torch.LongTensor(np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)).T
         
         # print(f'Shape of the edges: {edges.shape}') # 5429 links
         # print(f'Value of edges: {edges[0:2]}')
@@ -105,15 +109,14 @@ class Dataset_Loader(dataset):
         # the following part, you can either put them into the setting class or you can leave them in the dataset loader
         # the following train, test, val index are just examples, sample the train, test according to project requirements
         if self.dataset_name == 'cora':
-            idx_train = range(200)
-            idx_test = range(200, 1200)
+            idx_train = range(2166)
+            idx_test = range(2166, 2708)
             # idx_train = range(2708)
             # idx_test = range(200, 1200)
             # idx_val = range(1200, 1500)
         elif self.dataset_name == 'citeseer':
-            idx_train = range(120)
-            idx_test = range(200, 1200)
-            idx_val = range(1200, 1500)
+            idx_train = range(400)
+            idx_test = range(400, 2200)
         elif self.dataset_name == 'pubmed':
             idx_train = range(60)
             idx_test = range(6300, 7300)
@@ -155,12 +158,12 @@ class Dataset_Loader(dataset):
         return ret
     
     def load_savedData(self):
-        for file in Path(self.picklePath).glob(f'*{self.dataset_name}-loadedData-trainIdxRange(0, 2707)*'):
+        for file in Path(self.picklePath).glob(f'*{self.dataset_name}-loadedData*'):
             with open(file, mode='rb') as handle:
                 loadedData = pickle.load(handle)
             print(f'load using file: {file}')
 
         return loadedData
 
-# obj = Dataset_Loader()
+# obj = Dataset_Loader(dDataset='citeseer')
 # res = obj.load(save=True)
