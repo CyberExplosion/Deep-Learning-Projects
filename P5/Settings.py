@@ -58,17 +58,16 @@ class Settings(setting):
                 sEvaluate=Evaluate_Accuracy(),
                 sResult=Result_Saver()
             )
-        # elif self.dataName == "CIFAR":
-        #     self.trainParam['sDataName'] = 'CIFAR'
-        #     self.trainParam['sInputDim'] = (32,32)
-        #     self.trainParam['sInChannels'] = 3
-        #     self.trainParam['sOutputDim'] = 10
-        #     self.prepare(
-        #         sDataset=Dataset_Loader(sDataset=self.dataName),
-        #         sMethod=Method_CIFAR(sData=self.trainParam),
-        #         sEvaluate=Evaluate_Accuracy(),
-        #         sResult=Result_Saver()
-        #     )
+        elif self.dataName == "pubmed":
+            self.trainParam['sDataName'] = 'pubmed'
+            self.trainParam['sInputDim'] = 500
+            self.trainParam['sOutputDim'] = 3
+            self.prepare(
+                sDataset=Dataset_Loader(dDataset=self.dataName),
+                sMethod=Method_Classification(sData=self.trainParam),
+                sEvaluate=Evaluate_Accuracy(),
+                sResult=Result_Saver()
+            )
         
     
     def load_run_save_evaluate(self):

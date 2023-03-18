@@ -27,7 +27,7 @@ class Method_Classification(method, nn.Module):
         'sOutputDim': 7,    # Binary classification
         'sLearningRate': 1e-4,
         'sMomentum': 0.9,
-        'sMaxEpoch': 2000,  # ! CHANGE LATER
+        'sMaxEpoch': 3000,  # ! CHANGE LATER
         'sRandSeed': 31,
         'sKFold': 1
     }
@@ -51,14 +51,14 @@ class Method_Classification(method, nn.Module):
             comment=self.model_res_name)
         
         self.layers = geonn.Sequential('x, edge_index',[
-            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=50), 'x, edge_index -> x'),
+            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=100), 'x, edge_index -> x'),
             nn.ReLU(),
-            # (geonn.GCNConv(in_channels=100, out_channels=50), 'x, edge_index -> x'),
-            # nn.ReLU(),
-            (geonn.GCNConv(in_channels=50, out_channels=self.data['sOutputDim']), 'x, edge_index -> x'),
+            (geonn.GCNConv(in_channels=100, out_channels=50), 'x, edge_index -> x'),
+            nn.ReLU(),
+            (geonn.GCNConv(in_channels=50, out_channels=16), 'x, edge_index -> x'),
+            nn.ReLU(),
+            nn.Linear(in_features=16, out_features=self.data['sOutputDim']),
             nn.Sigmoid(),
-            # nn.Linear(in_features=16, out_features=self.data['sOutputDim']),
-            # nn.ReLU()
         ])
 
 
@@ -93,15 +93,10 @@ class Method_Classification(method, nn.Module):
         loss_function = self.lossFunction
 
         accuracy_evaluator = Evaluate_Accuracy('training evaluator', '')
-        # cv = KFold(n_splits=self.data['sKFold'], shuffle=True, random_state=self.data['sRandSeed'])
 
         # ! Try doing no fold
 
-        # for fold, (train_idx, val_idx) in enumerate(cv.split(self.data['train_test']['idx_train'])):
         self.training = True
-        # print(f"value of the idx train: {self.data['train_test']['idx_train']}")
-        
-        # trainMask = self.createMaskForGraphData(train_idx)
         trainMask = self.createMaskForGraphData(self.data['train_test']['idx_train'])
 
         for epoch in trange(self.data['sMaxEpoch'], desc='Training epochs'):
@@ -139,19 +134,6 @@ class Method_Classification(method, nn.Module):
                 if 'bertModel' not in name:
                     self.writer.add_histogram(name, weight, epoch)
                     self.writer.add_histogram(f'{name}.grad', weight.grad, epoch)
-
-            # # Testing the fold
-            # self.training = False
-            # testMask = self.createMaskForGraphData(val_idx)
-            # with torch.no_grad():
-            #     rawPred = self.forward(X.cuda(), edge_index.cuda())
-            #     testPred = rawPred[testMask].cpu().max(dim=1)[1]     # Only get the test label, no need the train label
-
-            # print(f"The predicted: {testPred}")
-            # print(f"and the true: {self.data['graph']['y'][testMask]}")
-            # print(f"Shape of the prediction: {testPred.shape} and the true: {self.data['graph']['y'][testMask].shape}")
-                
-            # print(f"Fold {fold} testing acc: {accuracy_score(self.data['graph']['y'][testMask], testPred)}")
 
 
     def test(self, X, edge_index):
