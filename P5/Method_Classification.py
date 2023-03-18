@@ -13,8 +13,10 @@ import numpy as np
 from collections import OrderedDict
 from torchinfo import summary
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import trange
+from tqdm import trange, tqdm
 import torch_geometric.nn as geonn
+from sklearn.model_selection import KFold
+from sklearn.metrics import accuracy_score
 
 BERTMAX_LEN = 512
 class Method_Classification(method, nn.Module):
@@ -25,8 +27,9 @@ class Method_Classification(method, nn.Module):
         'sOutputDim': 7,    # Binary classification
         'sLearningRate': 1e-4,
         'sMomentum': 0.9,
-        'sMaxEpoch': 3000,  # ! CHANGE LATER
-        'sRandSeed': 31
+        'sMaxEpoch': 2000,  # ! CHANGE LATER
+        'sRandSeed': 31,
+        'sKFold': 1
     }
 
     def __init__(self, mName='', mDescription='', sData=None):
@@ -48,12 +51,14 @@ class Method_Classification(method, nn.Module):
             comment=self.model_res_name)
         
         self.layers = geonn.Sequential('x, edge_index',[
-            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=100), 'x, edge_index -> x'),
+            (geonn.GCNConv(in_channels=self.data['sInputDim'], out_channels=50), 'x, edge_index -> x'),
             nn.ReLU(),
-            (geonn.GCNConv(in_channels=100, out_channels=50), 'x, edge_index -> x'),
-            nn.ReLU(),
+            # (geonn.GCNConv(in_channels=100, out_channels=50), 'x, edge_index -> x'),
+            # nn.ReLU(),
             (geonn.GCNConv(in_channels=50, out_channels=self.data['sOutputDim']), 'x, edge_index -> x'),
-            nn.ReLU(),
+            nn.Sigmoid(),
+            # nn.Linear(in_features=16, out_features=self.data['sOutputDim']),
+            # nn.ReLU()
         ])
 
 
@@ -83,15 +88,21 @@ class Method_Classification(method, nn.Module):
 
     def trainModel(self, X, edge_index, y):
         # #!!!! Debugging 
-        torch.autograd.set_detect_anomaly(True)
-
         # Turn on train mode for all layers and prepare data
-        self.training = True
         optimizer = self.optimizer
         loss_function = self.lossFunction
 
         accuracy_evaluator = Evaluate_Accuracy('training evaluator', '')
+        # cv = KFold(n_splits=self.data['sKFold'], shuffle=True, random_state=self.data['sRandSeed'])
 
+        # ! Try doing no fold
+
+        # for fold, (train_idx, val_idx) in enumerate(cv.split(self.data['train_test']['idx_train'])):
+        self.training = True
+        # print(f"value of the idx train: {self.data['train_test']['idx_train']}")
+        
+        # trainMask = self.createMaskForGraphData(train_idx)
+        trainMask = self.createMaskForGraphData(self.data['train_test']['idx_train'])
 
         for epoch in trange(self.data['sMaxEpoch'], desc='Training epochs'):
             # ! Begin forward here
@@ -99,7 +110,7 @@ class Method_Classification(method, nn.Module):
             fold_true = torch.LongTensor(np.array(y)).cuda()
 
             # ! only calculated loss using the training label
-            train_loss = loss_function(fold_pred[self.trainMask], fold_true[self.trainMask])
+            train_loss = loss_function(fold_pred[trainMask], fold_true[trainMask])
             optimizer.zero_grad()
             train_loss.backward()
 
@@ -111,6 +122,8 @@ class Method_Classification(method, nn.Module):
                     'true_y': fold_true.cpu(), 'pred_y': fold_pred.cpu().max(dim=1)[1]}
                 acc = accuracy_evaluator.evaluate()
                 loss = train_loss.item()
+                # print('Fold:', fold,'Epoch:', epoch, 'Accuracy:',
+                #         acc, 'Loss:', loss)
                 print('Epoch:', epoch, 'Accuracy:',
                         acc, 'Loss:', loss)
 
@@ -127,27 +140,43 @@ class Method_Classification(method, nn.Module):
                     self.writer.add_histogram(name, weight, epoch)
                     self.writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
+            # # Testing the fold
+            # self.training = False
+            # testMask = self.createMaskForGraphData(val_idx)
+            # with torch.no_grad():
+            #     rawPred = self.forward(X.cuda(), edge_index.cuda())
+            #     testPred = rawPred[testMask].cpu().max(dim=1)[1]     # Only get the test label, no need the train label
+
+            # print(f"The predicted: {testPred}")
+            # print(f"and the true: {self.data['graph']['y'][testMask]}")
+            # print(f"Shape of the prediction: {testPred.shape} and the true: {self.data['graph']['y'][testMask].shape}")
+                
+            # print(f"Fold {fold} testing acc: {accuracy_score(self.data['graph']['y'][testMask], testPred)}")
+
 
     def test(self, X, edge_index):
         # Set to test mode
         self.training = False
+        testMask = self.createMaskForGraphData(self.data['train_test']['idx_test'])
         with torch.no_grad():
             rawPred = self.forward(X.cuda(), edge_index.cuda())
-            testPred = rawPred[self.testMask].cpu().max(dim=1)[1]     # Only get the test label, no need the train label
+            testPred = rawPred[testMask].cpu().max(dim=1)[1]     # Only get the test label, no need the train label
 
         return testPred
 
 
-    def createMaskForGraphData(self):
+    def createMaskForGraphData(self, idxToUse:list) -> list:
         '''
-        Create a mask Tensor to hide all the labels that not in train or test set
+        Create a mask Tensor to hide all the labels that not use
+
+        Use in creating mask for fold
         '''
         numNodes = len(self.data['graph']['X'])
-        self.trainMask = torch.zeros(numNodes, dtype=torch.bool)
-        self.trainMask[self.data['train_test']['idx_train']] = True # mark true for only nodes that in the training set
 
-        self.testMask = torch.zeros(numNodes, dtype=torch.bool)
-        self.testMask[self.data['train_test']['idx_test']] = True
+        mask = torch.zeros(numNodes, dtype=torch.bool)
+        mask[idxToUse] = True # mark true for only nodes that in the training set
+
+        return mask
 
 
     def run(self):
@@ -159,8 +188,7 @@ class Method_Classification(method, nn.Module):
         # TODO: The Right way is to pass in all edges as always, but only use certain number of nodes during training
         # TODO: WE USING transductive learning (the training know the whole graph), but it doesn't know the label of the test set => Mask the training and testing
 
-
-        self.createMaskForGraphData()
+        # self.createMaskForGraphData()
         self.writer.add_graph(self, input_to_model=(self.data['graph']['X'].cuda(), self.data['graph']['edge'].cuda()))
 
     
@@ -178,7 +206,8 @@ class Method_Classification(method, nn.Module):
         pred_y = self.test(self.data['graph']['X'], self.data['graph']['edge'])
 
         # print(f'{pred_y} and the length {len(pred_y)} also length of each')
-        # ALso for tensor
+        trueTestMaks = self.createMaskForGraphData(self.data['train_test']['idx_test'])
+
         # * Only care about the test mask
-        return {'pred_y': pred_y, 'true_y': self.data['graph']['y'][self.testMask],
+        return {'pred_y': pred_y, 'true_y': self.data['graph']['y'][trueTestMaks],
                 'loss': self.lossList}

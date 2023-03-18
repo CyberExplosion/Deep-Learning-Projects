@@ -12,6 +12,7 @@ import scipy.sparse as sp
 import pickle
 from pathlib import Path
 from glob import glob
+from torch.utils.data import RandomSampler
 
 class Dataset_Loader(dataset):
     data = None
@@ -48,6 +49,37 @@ class Dataset_Loader(dataset):
         classes_dict = {c: np.identity(len(classes))[i, :] for i, c in enumerate(classes)}
         onehot_labels = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)
         return onehot_labels
+
+    def build_idx(self, labelsData) -> tuple:
+        if self.dataset_name == 'cora':
+            nodePerClassTrain = 20
+            nodePerClassTest = 150
+        if self.dataset_name == 'citeseer':
+            nodePerClassTrain = 20
+            nodePerClassTest = 200
+        if self.dataset_name == 'pubmed':
+            nodePerClassTrain = 20
+            nodePerClassTest = 200
+        idx_train, idx_test = [], []
+
+        uniqueLabels = np.unique(labelsData)
+        print(f'Unique labels {uniqueLabels}')
+        for label in uniqueLabels:
+            # Can't use index because it only get the first value that comes from left to right
+            IdxWithThisLabel = []
+            for i, each in enumerate(labelsData):
+                if each == label:
+                    IdxWithThisLabel.append(i)
+            # Now get a sample
+            dataInLabelIdx = np.random.choice(IdxWithThisLabel, nodePerClassTrain + nodePerClassTest, replace=False).tolist()
+            idx_train.extend(dataInLabelIdx[0:nodePerClassTrain])
+            idx_test.extend(dataInLabelIdx[nodePerClassTrain:nodePerClassTrain+nodePerClassTest])
+            # print(testDataInLabelIdx)   # Try print out the result index
+
+        return (idx_train, idx_test)
+        
+
+
 
     def load(self, save=False):
         """Load citation network dataset"""
@@ -108,43 +140,29 @@ class Dataset_Loader(dataset):
 
         # the following part, you can either put them into the setting class or you can leave them in the dataset loader
         # the following train, test, val index are just examples, sample the train, test according to project requirements
-        if self.dataset_name == 'cora':
-            idx_train = range(2166)
-            idx_test = range(2166, 2708)
-            # idx_train = range(2708)
-            # idx_test = range(200, 1200)
-            # idx_val = range(1200, 1500)
-        elif self.dataset_name == 'citeseer':
-            idx_train = range(400)
-            idx_test = range(400, 2200)
-        elif self.dataset_name == 'pubmed':
-            idx_train = range(60)
-            idx_test = range(6300, 7300)
-            idx_val = range(6000, 6300)
-        #---- cora-small is a toy dataset I hand crafted for debugging purposes ---
-        elif self.dataset_name == 'cora-small':
-            print('got in here')
-            idx_train = range(5)
-            idx_test = range(5, 10)
-            # idx_val = range(5, 10)
+        idx_train, idx_test  = self.build_idx(labels.tolist())
 
-        # Only get the edges that matter in the train and test set
-        # trainingEdge = []
-        # for idx in idx_train:
-        #     linksWithThisIdx = [e.tolist() for e in edges if e[0] <= idx_train[-1] and e[1] <= idx_train[-1]] # sort out all the index that is not in
-        #     if linksWithThisIdx:
-        #         trainingEdge.extend(linksWithThisIdx)
-        # testingEdge = []
-        # for idx in idx_test:
-        #     linksWithThisIdx = [e.tolist() for e in edges if e[0] <= idx_test[-1] and e[1] <= idx_test[-1]] # sort out all the index that is not in
-        #     if linksWithThisIdx:
-        #         testingEdge.extend(linksWithThisIdx)
-        idxTrainRange = (idx_train[0], idx_train[-1])
-        idxTestRange = (idx_test[0], idx_test[-1])
+        # if self.dataset_name == 'cora':
+        #     # idx_train = range(200)
+        #     # idx_test = range(200, 1200)
+        #     # idx_val = range(1200, 1500)
+        # elif self.dataset_name == 'citeseer':
+        #     idx_train = range(3192, 3312)
+        #     idx_test = range(1200)
+        #     # idx_train = range(400)
+        #     # idx_test = range(400, 2200)
+        # elif self.dataset_name == 'pubmed':
+        #     idx_train = range(60)
+        #     idx_test = range(6700, 7300)
+        #     # idx_val = range(6000, 6300)
+        # #---- cora-small is a toy dataset I hand crafted for debugging purposes ---
+        # elif self.dataset_name == 'cora-small':
+        #     print('got in here')
+        #     idx_train = range(5)
+        #     idx_test = range(5, 10)
+        #     # idx_val = range(5, 10)
+        print(f'The index train: {idx_train} and index test: {idx_test}')
 
-        # Don't turn it into tensor yet, we do that during training
-        # idx_train = torch.LongTensor(idx_train)
-        # idx_test = torch.LongTensor(idx_test)
 
         train_test = {'idx_train': idx_train, 'idx_test': idx_test}
         graph = {'node': idx_map, 'edge': edges, 'X': features, 'y': labels, 'utility': {'A': adj, 'reverse_idx': reverse_idx_map}}
@@ -152,7 +170,7 @@ class Dataset_Loader(dataset):
 
         # Save the result so you don't have build the data set again
         if save:
-            with open(f'{self.picklePath}/{self.dataset_name}-loadedData-trainIdxRange{idxTrainRange}-testIdxRange{idxTestRange}.pk', mode='wb') as file:
+            with open(f'{self.picklePath}/{self.dataset_name}-loadedData.pk', mode='wb') as file:
                 pickle.dump(ret, file, protocol=pickle.HIGHEST_PROTOCOL)
         
         return ret
@@ -165,5 +183,5 @@ class Dataset_Loader(dataset):
 
         return loadedData
 
-# obj = Dataset_Loader(dDataset='citeseer')
+# obj = Dataset_Loader(dDataset='cora')
 # res = obj.load(save=True)
